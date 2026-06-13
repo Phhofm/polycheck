@@ -1,0 +1,13 @@
+# Build / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# polycheck runtime output
+polycheck-reports/
+.polycheck-pip-audit-reqs.txt

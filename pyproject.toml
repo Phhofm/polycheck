@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polycheck"
+version = "0.1.0"
+description = "Polyglot static analysis pipeline that produces LLM-ready triage output"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Philip Hofmann", email = "philiphofmann@hotmail.com"},
+]
+keywords = [
+    "static-analysis", "lint", "linter", "triage", "llm",
+    "code-quality", "polyglot", "mcp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+]
+# polycheck itself is pure Python. The analyzers it shells out to are
+# the user's responsibility — install them once, polycheck finds them.
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.10",
+    "ruff>=0.2",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+polycheck = "polycheck.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Phhofm/polycheck"
+Repository = "https://github.com/Phhofm/polycheck"
+Issues = "https://github.com/Phhofm/polycheck/issues"
+Changelog = "https://github.com/Phhofm/polycheck/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+polycheck = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "B", "UP"]
+ignore = [
+    "E501",  # tolerated for long URLs and tool output quotes
+]
+
+[tool.ruff.lint.per-file-ignores]
+# typer requires typer.Option/Argument calls in default values; ruff
+# flags them as B008 but the design is correct.
+"src/polycheck/cli.py" = ["B008"]
+# The MCP server does a lazy import of TextContent inside run_server();
+# the F401 is a false positive.
+"src/polycheck/mcp_server.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
