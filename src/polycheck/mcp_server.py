@@ -1,12 +1,15 @@
 """polycheck MCP server (stdio transport).
 
-Exposes three tools to an AI agent:
+Exposes five tools to an AI agent:
 
   * ``polycheck.audit_run`` — run the full pipeline and return the
     report paths + a short summary. Heavy: spawns subprocesses.
   * ``polycheck.list_tools`` — list available analyzers.
   * ``polycheck.explain_finding`` — explain a finding's category and
     how to triage it.
+  * ``polycheck.doctor`` — check which tools are installed and which
+    are missing. Reports Docker status for sonarless.
+  * ``polycheck.install`` — install missing tools.
 
 And three resources:
 
@@ -17,6 +20,8 @@ And three resources:
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,14 +38,37 @@ if TYPE_CHECKING:
 # (single request at a time). Not thread-safe for concurrent requests.
 _LAST_RUN: dict = {}
 
+# Status messages for tool availability checks.
+_STATUS_NOT_FOUND = "not found"
+_STATUS_INSTALLED = "installed"
+
 
 _TRIAGE_PROMPT = """\
-You are a senior code reviewer. The file polycheck-report.md below is the
-output of a static-analysis pipeline. It contains LINT, TYPE, SECURITY,
-DEAD_CODE, DEPS, and SECRETS findings. The reports include file, line,
-rule id, severity, and the analyzer's message.
+You are a senior code reviewer guiding the user through code quality
+improvements. The file polycheck-report.md is the output of a
+static-analysis pipeline covering LINT, TYPE, SECURITY, DEAD_CODE,
+DEPS, CVE, and SECRETS findings — including results from SonarQube
+(bugs, vulnerabilities, code smells across 30+ languages).
 
-Your job: triage every finding. For each one, classify it as one of:
+## Workflow
+
+1. Read the polycheck-report.md file.
+2. Present findings grouped by severity:
+   - CRITICAL and HIGH first (urgent — these are likely real bugs)
+   - MEDIUM next (real smells, worth fixing)
+   - LOW and INFO only if the user asks
+3. For each finding, tell the user:
+   - Which tool found it (ruff, mypy, sonarless, gitleaks, etc.)
+   - What the issue is (one sentence)
+   - Why it matters (security risk, type error, dead code, etc.)
+4. Ask: "Should I fix the [HIGH/CRITICAL] issues?"
+5. Apply fixes ONLY after user approval.
+6. Summarize: what was fixed, what was deferred, what was flagged as
+   false positive.
+
+## Triage Rules
+
+For each finding, classify it as:
 
   REAL BUG       — must be fixed; do not ship without a fix.
   REAL SMELL     — not wrong, but worth refactoring; flag for follow-up.
@@ -59,6 +87,8 @@ Do not re-read the source files unless a finding's message is genuinely
 ambiguous. Trust the static report. Read the full markdown report with
 the `read_file` tool, then the JSON report with `read_file` for any
 findings you need full `raw` data on.
+
+## Output
 
 When you're done, return a single JSON object shaped like:
 
@@ -95,66 +125,11 @@ def run_server() -> None:
 
     @server.list_tools()
     async def _list_tools():
-        return [
-            Tool(
-                name="polycheck.audit_run",
-                description=(
-                    "Run the polycheck pipeline on a repository. Returns the "
-                    "report paths and a one-line summary. Use the "
-                    "`polycheck://findings/markdown` resource to read the "
-                    "full report."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "repo": {"type": "string", "description": "Path to the repo root"},
-                        "tools": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Restrict to specific tool names",
-                        },
-                        "severity": {
-                            "type": "string",
-                            "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                        },
-                    },
-                    "required": ["repo"],
-                },
-            ),
-            Tool(
-                name="polycheck.list_tools",
-                description="List every analyzer polycheck knows about.",
-                inputSchema={"type": "object", "properties": {}},
-            ),
-            Tool(
-                name="polycheck.explain_finding",
-                description=(
-                    "Explain what a category of finding means and how to "
-                    "triage it (e.g. 'CVE', 'DEAD_CODE', 'LINT')."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "category": {
-                            "type": "string",
-                            "enum": [c.value for c in Category],
-                        },
-                        "tool": {"type": "string", "description": "Optional tool name"},
-                    },
-                    "required": ["category"],
-                },
-            ),
-        ]
+        return _build_tool_definitions()
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict):
-        if name == "polycheck.audit_run":
-            return _handle_audit_run(arguments)
-        if name == "polycheck.list_tools":
-            return _handle_list_tools()
-        if name == "polycheck.explain_finding":
-            return _handle_explain(arguments)
-        raise ValueError(f"Unknown tool: {name}")
+        return _dispatch_tool(name, arguments)
 
     @server.list_resources()
     async def _list_resources():
@@ -166,21 +141,120 @@ def run_server() -> None:
                 mimeType="text/plain",
             ),
         ]
-        # The dynamic per-run resources (markdown, json) are added below
-        # once a run has completed.
 
     @server.read_resource()
     async def _read_resource(uri: str):
-        if uri == "polycheck://triage/prompt":
-            return _TRIAGE_PROMPT
-        if uri == "polycheck://findings/markdown":
-            return _last("polycheck-report.md")
-        if uri == "polycheck://findings/json":
-            return _last("polycheck-report.json")
-        raise ValueError(f"Unknown resource: {uri}")
+        return _read_resource_content(uri)
 
     import asyncio
     asyncio.run(stdio_server(server).serve())
+
+
+def _build_tool_definitions():
+    """Build the list of MCP tool definitions."""
+    from mcp.types import Tool
+
+    return [
+        Tool(
+            name="polycheck.audit_run",
+            description=(
+                "Run the polycheck pipeline on a repository. Returns the "
+                "report paths and a one-line summary. Use the "
+                "`polycheck://findings/markdown` resource to read the "
+                "full report."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Path to the repo root"},
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Restrict to specific tool names",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                    },
+                },
+                "required": ["repo"],
+            },
+        ),
+        Tool(
+            name="polycheck.list_tools",
+            description="List every analyzer polycheck knows about.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="polycheck.explain_finding",
+            description=(
+                "Explain what a category of finding means and how to "
+                "triage it (e.g. 'CVE', 'DEAD_CODE', 'LINT')."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": [c.value for c in Category],
+                    },
+                    "tool": {"type": "string", "description": "Optional tool name"},
+                },
+                "required": ["category"],
+            },
+        ),
+        Tool(
+            name="polycheck.doctor",
+            description=(
+                "Check which tools are installed and which are missing. "
+                "Reports Docker status (needed for sonarless)."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="polycheck.install",
+            description=(
+                "Install missing tools. Without arguments, installs all "
+                "missing tools. Pass specific tool names to install only those."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific tool names to install (default: all missing)",
+                    },
+                },
+            },
+        ),
+    ]
+
+
+def _dispatch_tool(name: str, arguments: dict):
+    """Dispatch an MCP tool call to the appropriate handler."""
+    handlers = {
+        "polycheck.audit_run": _handle_audit_run,
+        "polycheck.list_tools": lambda _: _handle_list_tools(),
+        "polycheck.explain_finding": _handle_explain,
+        "polycheck.doctor": lambda _: _handle_doctor(),
+        "polycheck.install": _handle_install,
+    }
+    handler = handlers.get(name)
+    if handler is None:
+        raise ValueError(f"Unknown tool: {name}")
+    return handler(arguments)
+
+
+def _read_resource_content(uri: str) -> str:
+    """Read content from an MCP resource URI."""
+    if uri == "polycheck://triage/prompt":
+        return _TRIAGE_PROMPT
+    if uri == "polycheck://findings/markdown":
+        return _last("polycheck-report.md")
+    if uri == "polycheck://findings/json":
+        return _last("polycheck-report.json")
+    raise ValueError(f"Unknown resource: {uri}")
 
 
 def _last(name: str) -> str:
@@ -253,8 +327,85 @@ def _handle_explain(arguments: dict) -> list:
             text += f"\n\nNote: unknown tool '{tool}'."
         else:
             inst = cls()
-            text += f"\n\nFor {tool}, run: `{inst.install_hint}`."
+            text += f"\n\nFor {tool}, run: `{inst.install_hint()}`."
     return [TextContent(type="text", text=text)]
+
+
+def _handle_doctor() -> list:
+    """Check Docker, sonarless, and all registered tools."""
+    rows = []
+
+    # Docker check
+    docker_status = _check_docker()
+    rows.append(docker_status)
+
+    # sonarless check
+    sonarless_ok = shutil.which("sonarless") is not None
+    rows.append({
+        "name": "sonarless",
+        "status": _STATUS_INSTALLED if sonarless_ok else _STATUS_NOT_FOUND,
+        "note": "" if sonarless_ok else (
+            "Install: curl -s https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash"
+        ),
+    })
+
+    # All registered tools
+    for cls in default_registry.all():
+        inst = cls()
+        installed = inst.is_installed()
+        rows.append({
+            "name": cls.name,
+            "status": _STATUS_INSTALLED if installed else _STATUS_NOT_FOUND,
+            "version": inst.version() if installed else None,
+            "languages": cls.languages,
+            "universal": cls.universal,
+            "note": "" if installed else f"Install: {inst.install_hint()}",
+        })
+
+    return [TextContent(type="text", text=json.dumps(rows, indent=2))]
+
+
+def _check_docker() -> dict:
+    """Check if Docker is installed and running."""
+    docker_ok = shutil.which("docker") is not None
+    docker_running = False
+    if docker_ok:
+        try:
+            r = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+            docker_running = r.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+    if docker_running:
+        status = _STATUS_INSTALLED
+    elif docker_ok:
+        status = "exists but not running"
+    else:
+        status = _STATUS_NOT_FOUND
+
+    note = "" if docker_running else (
+        "Docker is needed for sonarless (SonarQube analysis). "
+        "Install Docker: https://docs.docker.com/get-docker/"
+    )
+    return {"name": "docker", "status": status, "note": note}
+
+
+def _handle_install(arguments: dict) -> list:
+    """Install missing tools."""
+    tools_filter = arguments.get("tools")
+    results = []
+
+    for cls in default_registry.all():
+        if tools_filter and cls.name not in tools_filter:
+            continue
+        inst = cls()
+        if inst.is_installed():
+            results.append({"name": cls.name, "installed": True, "message": "already installed"})
+            continue
+        success, message = inst.install()
+        results.append({"name": cls.name, "installed": success, "message": message})
+
+    return [TextContent(type="text", text=json.dumps(results, indent=2))]
 
 
 _CATEGORY_HELP = {
@@ -272,10 +423,11 @@ _CATEGORY_HELP = {
         "package to your mypy requirements."
     ),
     "SECURITY": (
-        "SECURITY findings are pattern-based. Many are HIGH. They have a "
-        "high signal but not all are bugs (e.g. 'use of MD5' is a smell, not "
-        "always a bug). Triage: for each, ask 'is the dangerous operation "
-        "actually reachable with attacker-controlled input?'"
+        "SECURITY findings are pattern-based bugs, vulnerabilities, and "
+        "security hotspots. Many are HIGH. They have a high signal but not "
+        "all are bugs (e.g. 'use of MD5' is a smell, not always a bug). "
+        "Triage: for each, ask 'is the dangerous operation actually "
+        "reachable with attacker-controlled input?'"
     ),
     "DEAD_CODE": (
         "DEAD_CODE findings are symbols not called from anywhere. Mostly LOW. "

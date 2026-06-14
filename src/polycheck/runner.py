@@ -98,18 +98,11 @@ class Runner:
         # empty repo where no analyzer is relevant).
         candidates: list[type] = []
         for cls in self.registry.all():
-            if cls.universal:
-                candidates.append(cls)
-            elif lang_slugs and any(slug in lang_slugs for slug in cls.languages):
+            if cls.universal or (lang_slugs and any(slug in lang_slugs for slug in cls.languages)):
                 candidates.append(cls)
 
-        # Apply enable/disable.
-        if self.config.enable:
-            wanted = set(self.config.enable)
-            candidates = [c for c in candidates if c.name in wanted]
-        if self.config.disable:
-            excluded = set(self.config.disable)
-            candidates = [c for c in candidates if c.name not in excluded]
+        # Apply enable/disable filters.
+        candidates = self._apply_filters(candidates)
 
         # Filter to installed + applicable.
         out: list[type] = []
@@ -121,6 +114,16 @@ class Runner:
                 continue
             out.append(cls)
         return out
+
+    def _apply_filters(self, candidates: list[type]) -> list[type]:
+        """Apply enable/disable config filters to candidate tools."""
+        if self.config.enable:
+            wanted = set(self.config.enable)
+            candidates = [c for c in candidates if c.name in wanted]
+        if self.config.disable:
+            excluded = set(self.config.disable)
+            candidates = [c for c in candidates if c.name not in excluded]
+        return candidates
 
     def _run_one(self, tool_cls: type) -> ToolResult:
         name = tool_cls.name

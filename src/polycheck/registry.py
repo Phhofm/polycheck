@@ -75,41 +75,45 @@ class ToolRegistry:
 
         from . import tools as tools_pkg  # local import to avoid cycle
 
+        self._import_tool_modules(tools_pkg)
+        self._register_tool_classes(tools_pkg)
+        return len(self._tools)
+
+    def _import_tool_modules(self, tools_pkg) -> None:
+        """Import all tool modules from the tools package."""
+        import sys
+
         for _finder, name, _is_pkg in pkgutil.iter_modules(tools_pkg.__path__):
-            if name == "base":
-                continue
-            # pkgutil iterates the package directory, so ``name`` is
-            # always a Python file basename (no slashes, no dots).
-            # Validate it as a defensive measure against any future
-            # caller that might pass in user-controlled data.
-            if not name.isidentifier():
+            if name == "base" or not name.isidentifier():
                 continue
             try:
                 importlib.import_module(f"{tools_pkg.__name__}.{name}")  # nosemgrep
             except ImportError as e:
                 # A tool may fail to import if its 3rd-party SDK is
                 # missing (e.g. knip). Don't fail the whole discovery.
-                # The tool is skipped; the user can install it later.
                 print(f"polycheck: skipping tool {name}: {e}", file=sys.stderr)
 
-        # Now that every module is loaded, walk them and register
-        # any Tool subclass that was defined in them.
+    def _register_tool_classes(self, tools_pkg) -> None:
+        """Register all Tool subclasses from imported modules."""
+        import inspect
+        import sys
+
         for module_name, module in list(sys.modules.items()):
             if not module_name.startswith(tools_pkg.__name__ + "."):
                 continue
             if module_name == tools_pkg.__name__ + ".base":
                 continue
             for _name, obj in inspect.getmembers(module, inspect.isclass):
-                if not issubclass(obj, Tool):
-                    continue
-                if obj is Tool:
-                    continue
-                # Only register classes actually defined in this module
-                # (skip re-exports from base).
-                if obj.__module__ != module_name:
-                    continue
-                self.register(obj)
-        return len(self._tools)
+                if self._should_register(obj, module_name):
+                    self.register(obj)
+
+    def _should_register(self, obj, module_name: str) -> bool:
+        """Determine if a class should be registered as a tool."""
+        return (
+            issubclass(obj, Tool)
+            and obj is not Tool
+            and obj.__module__ == module_name
+        )
 
     def __iter__(self) -> Iterator[type[Tool]]:
         return iter(self._tools.values())

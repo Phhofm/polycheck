@@ -16,6 +16,9 @@ from pathlib import Path
 from ..finding import Category, Finding, Severity
 from .base import Tool
 
+# Canonical name for the requirements file used by pip-audit.
+_REQUIREMENTS_TXT = "requirements.txt"
+
 
 class PipAuditTool(Tool):
     name = "pip-audit"
@@ -28,68 +31,77 @@ class PipAuditTool(Tool):
         # lockable dependency manifest.
         return any(
             (repo / name).exists()
-            for name in ("pyproject.toml", "requirements.txt", "Pipfile", "poetry.lock", "uv.lock")
+            for name in ("pyproject.toml", _REQUIREMENTS_TXT, "Pipfile", "poetry.lock", "uv.lock")
         )
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("pip-audit") is None:
             return []
 
-        # Prefer the project's own pyproject.toml/requirements.txt.
-        if (repo / "requirements.txt").exists():
-            cmd = ["pip-audit", "-r", "requirements.txt", "--format", "json", "--no-deps"]
-        else:
-            # Fall back to scanning the requirements we can extract from pyproject.toml.
-            # pip-audit doesn't read pyproject.toml directly, so we generate a
-            # minimal requirements file on the fly.
-            reqs = self._extract_requirements(repo)
-            if not reqs:
-                return []
-            tmp = repo / ".polycheck-pip-audit-reqs.txt"
-            tmp.write_text("\n".join(reqs), encoding="utf-8")
-            cmd = ["pip-audit", "-r", str(tmp.name), "--format", "json", "--no-deps"]
+        cmd = self._build_command(repo)
+        if cmd is None:
+            return []
 
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )
-        # pip-audit exits 1 when vulnerabilities are found; 0 when clean.
         if not out.stdout.strip():
             return []
+
         try:
             data = json.loads(out.stdout)
         except json.JSONDecodeError:
             return []
 
+        return self._parse_findings(data)
+
+    def _build_command(self, repo: Path) -> list[str] | None:
+        """Build the pip-audit command."""
+        if (repo / _REQUIREMENTS_TXT).exists():
+            return ["pip-audit", "-r", _REQUIREMENTS_TXT, "--format", "json", "--no-deps"]
+
+        reqs = self._extract_requirements(repo)
+        if not reqs:
+            return None
+
+        tmp = repo / ".polycheck-pip-audit-reqs.txt"
+        tmp.write_text("\n".join(reqs), encoding="utf-8")
+        return ["pip-audit", "-r", str(tmp.name), "--format", "json", "--no-deps"]
+
+    def _parse_findings(self, data: dict) -> list[Finding]:
+        """Parse pip-audit JSON output into Finding objects."""
         findings: list[Finding] = []
         for dep in data.get("dependencies", []):
-            seen_ids: set[str] = set()  # dedup aliases (pip-audit reports the same vuln twice sometimes)
+            seen_ids: set[str] = set()
             for vuln in dep.get("vulns", []):
-                fix_versions = ",".join(vuln.get("fix_versions", []))
                 rule_id = vuln.get("id", "CVE-UNKNOWN")
                 if rule_id in seen_ids:
                     continue
                 seen_ids.add(rule_id)
-                findings.append(
-                    Finding(
-                    tool=self.name,
-                    rule=rule_id,
-                    severity=Severity.CRITICAL,
-                        category=self.category,
-                        message=(
-                            f"{dep.get('name','?')} {dep.get('version','?')}: "
-                            f"{vuln.get('description','')[:200]}"
-                            + (f" (fix: {fix_versions})" if fix_versions else "")
-                        ),
-                        file=dep.get("name"),
-                        line=0,
-                        column=0,
-                        fixable=bool(fix_versions),
-                        fix_command=None,
-                        doc_url=None,
-                        raw={"dep": dep, "vuln": vuln},
-                    )
-                )
+                findings.append(self._make_finding(dep, vuln, rule_id))
         return findings
+
+    def _make_finding(self, dep: dict, vuln: dict, rule_id: str) -> Finding:
+        """Create a Finding from a dependency vulnerability."""
+        fix_versions = ",".join(vuln.get("fix_versions", []))
+        return Finding(
+            tool=self.name,
+            rule=rule_id,
+            severity=Severity.CRITICAL,
+            category=self.category,
+            message=(
+                f"{dep.get('name','?')} {dep.get('version','?')}: "
+                f"{vuln.get('description','')[:200]}"
+                + (f" (fix: {fix_versions})" if fix_versions else "")
+            ),
+            file=dep.get("name"),
+            line=0,
+            column=0,
+            fixable=bool(fix_versions),
+            fix_command=None,
+            doc_url=None,
+            raw={"dep": dep, "vuln": vuln},
+        )
 
     @staticmethod
     def _extract_requirements(repo: Path) -> list[str]:

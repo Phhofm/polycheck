@@ -9,7 +9,7 @@ from polycheck.finding import Category, Finding, Severity, fingerprint
 
 def test_severity_ordering():
     assert Severity.CRITICAL > Severity.HIGH > Severity.MEDIUM > Severity.LOW > Severity.INFO
-    assert Severity.HIGH >= Severity.HIGH
+    assert Severity.HIGH >= Severity.MEDIUM
     assert Severity.LOW >= Severity.INFO
 
 

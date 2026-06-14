@@ -11,3 +11,6 @@ dist/
 # polycheck runtime output
 polycheck-reports/
 .polycheck-pip-audit-reqs.txt
+
+# sonarless output
+sonar-metrics.json

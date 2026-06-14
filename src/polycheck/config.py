@@ -61,43 +61,56 @@ class Config:
 
     @classmethod
     def _parse(cls, path: Path) -> Config:
+        data = cls._read_config_file(path)
+        cfg = cls()
+        cfg.source = path
+        cfg._apply_dict(data)
+        return cfg
+
+    @staticmethod
+    def _read_config_file(path: Path) -> dict[str, Any]:
+        """Read and parse a config file (YAML or TOML)."""
         try:
             text = path.read_text(encoding="utf-8")
             if path.suffix == ".toml":
-                # Lazy import: tomli/tomllib are stdlib in 3.11+, but we
-                # support 3.10 via the tomli backport.
-                try:
-                    import tomllib  # py311+
-                except ImportError:
-                    import tomli as tomllib
-                data: dict[str, Any] = tomllib.loads(text)
-            else:
-                data = yaml.safe_load(text) or {}
+                return cls._parse_toml(text)
+            return yaml.safe_load(text) or {}
         except (yaml.YAMLError, ValueError) as e:
             raise ConfigError(f"Could not parse {path}: {e}") from e
 
-        cfg = cls()
-        cfg.source = path
+    @staticmethod
+    def _parse_toml(text: str) -> dict[str, Any]:
+        """Parse TOML text, handling Python 3.10 compatibility."""
+        try:
+            import tomllib  # py311+
+        except ImportError:
+            import tomli as tomllib
+        return tomllib.loads(text)
+
+    def _apply_dict(self, data: dict[str, Any]) -> None:
+        """Apply config values from a parsed dictionary."""
         if "enable" in data:
-            cfg.enable = list(data["enable"])
+            self.enable = list(data["enable"])
         if "disable" in data:
-            cfg.disable = list(data["disable"])
+            self.disable = list(data["disable"])
         if "severity_threshold" in data:
-            cfg.severity_threshold = str(data["severity_threshold"]).upper()
+            self.severity_threshold = str(data["severity_threshold"]).upper()
         if "timeout" in data:
-            cfg.timeout = int(data["timeout"])
+            self.timeout = int(data["timeout"])
         if "extra_args" in data and isinstance(data["extra_args"], dict):
-            cfg.extra_args = {
+            self.extra_args = {
                 str(k): list(v) if isinstance(v, list) else [str(v)]
                 for k, v in data["extra_args"].items()
             }
         if "output" in data and isinstance(data["output"], dict):
-            out = data["output"]
-            if "formats" in out:
-                cfg.output.formats = list(out["formats"])
-            if "report_dir" in out:
-                cfg.output.report_dir = str(out["report_dir"])
-        return cfg
+            self._apply_output(data["output"])
+
+    def _apply_output(self, out: dict[str, Any]) -> None:
+        """Apply output configuration from a dictionary."""
+        if "formats" in out:
+            self.output.formats = list(out["formats"])
+        if "report_dir" in out:
+            self.output.report_dir = str(out["report_dir"])
 
 
 class ConfigError(Exception):

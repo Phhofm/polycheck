@@ -94,25 +94,11 @@ def run(
     ),
 ) -> None:
     """Run all applicable tools and write reports."""
-    cfg = Config.load(config) if config else Config.load(path)
-    if severity:
-        cfg.severity_threshold = severity.upper()
-    if output:
-        cfg.output.formats = list(output)
-    if report_dir:
-        cfg.output.report_dir = str(report_dir)
-
+    cfg = _load_config(config, path, severity, output, report_dir)
     repo = path.resolve()
     console.print(f"[bold]polycheck[/bold] {__version__} — {repo}")
 
-    # Detect languages up front so the user knows what polycheck saw.
-    langs = detect(repo)
-    if langs:
-        console.print(
-            "Detected: " + ", ".join(f"[cyan]{lang.slug}[/cyan]" for lang in langs)
-        )
-    else:
-        console.print("[yellow]No supported languages detected.[/yellow]")
+    _print_detected_languages(repo)
 
     if install:
         _auto_install_missing(only=tool or None, repo=repo)
@@ -124,17 +110,64 @@ def run(
         findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
 
-    # Write each requested format. The report dir is relative to the
-    # target repo (not cwd) so the report is always next to the code
-    # that produced it.
+    written = _write_reports(cfg, repo, findings, results)
+    _print_summary(results, findings, written)
+
+    failed = [r for r in results if r.status in ("error", "timeout")]
+    if failed:
+        _print_failures(failed)
+
+    not_run = _missing_tools(repo, only=tool or None, exclude={r.tool for r in results})
+    if not_run:
+        _print_missing(not_run)
+
+    raise typer.Exit(code=_exit_code(findings, fail_on.upper()))
+
+
+def _load_config(
+    config: Path | None,
+    path: Path,
+    severity: str | None,
+    output: list[str] | None,
+    report_dir: Path | None,
+) -> Config:
+    """Load and apply CLI overrides to the config."""
+    cfg = Config.load(config) if config else Config.load(path)
+    if severity:
+        cfg.severity_threshold = severity.upper()
+    if output:
+        cfg.output.formats = list(output)
+    if report_dir:
+        cfg.output.report_dir = str(report_dir)
+    return cfg
+
+
+def _print_detected_languages(repo: Path) -> None:
+    """Print detected languages to the console."""
+    langs = detect(repo)
+    if langs:
+        console.print(
+            "Detected: " + ", ".join(f"[cyan]{lang.slug}[/cyan]" for lang in langs)
+        )
+    else:
+        console.print("[yellow]No supported languages detected.[/yellow]")
+
+
+def _write_reports(
+    cfg: Config, repo: Path, findings: list, results: list
+) -> list[Path]:
+    """Write reports in all configured formats."""
     out_dir = repo / cfg.output.report_dir
     written: list[Path] = []
     for fmt in cfg.output.formats:
         written.extend(
             render_report(fmt, repo, findings, results, report_dir=out_dir)
         )
+    return written
 
-    # Summary.
+
+def _print_summary(results: list, findings: list, written: list[Path]) -> None:
+    """Print the tool summary table and findings count."""
     by_tool = Table(title="Tools")
     by_tool.add_column("Tool", style="cyan")
     by_tool.add_column("Status")
@@ -146,34 +179,29 @@ def run(
         )
     console.print(by_tool)
     console.print(f"\n[bold]{len(findings)}[/bold] findings after filtering")
-
-    failed = [r for r in results if r.status in ("error", "timeout")]
-    if failed:
-        console.print(
-            f"[yellow]{len(failed)} tool(s) failed:[/yellow] "
-            + ", ".join(r.tool for r in failed)
-        )
-        for r in failed:
-            if r.error:
-                console.print(f"  [red]{r.tool}[/red]: {r.error}")
-
-    # Show which tools were *not* run because they are not installed
-    # (vs. not applicable). The user can then `polycheck install <name>`.
-    not_run = _missing_tools(repo, only=tool or None, exclude={r.tool for r in results})
-    if not_run:
-        console.print(f"\n[yellow]{len(not_run)} tool(s) not installed:[/yellow]")
-        for cls in not_run:
-            inst = cls()
-            console.print(f"  [cyan]{inst.name}[/cyan]: {inst.install_hint()}")
-
     if written:
         console.print("\nReports written:")
         for p in written:
             console.print(f"  [green]{p}[/green]")
 
-    # Exit code for CI: non-zero if any finding is at or above
-    # --fail-on severity.
-    raise typer.Exit(code=_exit_code(findings, fail_on.upper()))
+
+def _print_failures(failed: list) -> None:
+    """Print failed tool information."""
+    console.print(
+        f"[yellow]{len(failed)} tool(s) failed:[/yellow] "
+        + ", ".join(r.tool for r in failed)
+    )
+    for r in failed:
+        if r.error:
+            console.print(f"  [red]{r.tool}[/red]: {r.error}")
+
+
+def _print_missing(not_run: list) -> None:
+    """Print missing tool information."""
+    console.print(f"\n[yellow]{len(not_run)} tool(s) not installed:[/yellow]")
+    for cls in not_run:
+        inst = cls()
+        console.print(f"  [cyan]{inst.name}[/cyan]: {inst.install_hint()}")
 
 
 @app.command(name="list-tools")
@@ -323,32 +351,50 @@ def install_cmd(
     (``pipx``, ``npm``, ``brew``, ``apt``, …) as configured per-tool
     in the ``installer`` class attribute.
     """
-    targets: list[type] = []
-    if tool:
-        for name in tool:
-            cls = default_registry.get(name)
-            if cls is None:
-                console.print(f"[red]Unknown tool:[/red] {name}")
-                raise typer.Exit(code=1)
-            targets.append(cls)
-    elif all_tools:
-        targets = list(default_registry.all())
-    else:
-        for cls in default_registry.all():
-            if not cls().is_installed():
-                targets.append(cls)
-
+    targets = _resolve_install_targets(tool, all_tools)
     if not targets:
         console.print("[green]Nothing to install — all selected tools are present.[/green]")
         return
 
+    _confirm_install(targets, yes)
+    failed = _execute_installs(targets)
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _resolve_install_targets(tool: list[str] | None, all_tools: bool) -> list[type]:
+    """Determine which tools to install based on CLI arguments."""
+    if tool:
+        return _resolve_named_tools(tool)
+    if all_tools:
+        return list(default_registry.all())
+    return [cls for cls in default_registry.all() if not cls().is_installed()]
+
+
+def _resolve_named_tools(names: list[str]) -> list[type]:
+    """Resolve tool names to tool classes, exiting on unknown names."""
+    targets = []
+    for name in names:
+        cls = default_registry.get(name)
+        if cls is None:
+            console.print(f"[red]Unknown tool:[/red] {name}")
+            raise typer.Exit(code=1)
+        targets.append(cls)
+    return targets
+
+
+def _confirm_install(targets: list[type], yes: bool) -> None:
+    """Show installation plan and confirm with user."""
     console.print(f"Will install {len(targets)} tool(s):")
     for cls in targets:
         console.print(f"  [cyan]{cls.name}[/cyan]: {cls().install_hint()}")
-    if not yes:
-        if not typer.confirm("Proceed?"):
-            raise typer.Abort()
+    if not yes and not typer.confirm("Proceed?"):
+        raise typer.Abort()
 
+
+def _execute_installs(targets: list[type]) -> list[tuple[str, str]]:
+    """Install each target tool, returning list of failures."""
     failed: list[tuple[str, str]] = []
     for cls in targets:
         inst = cls()
@@ -358,9 +404,7 @@ def install_cmd(
         else:
             console.print(f"  [red]✗[/red] {inst.name}: {msg}")
             failed.append((inst.name, msg))
-
-    if failed:
-        raise typer.Exit(code=1)
+    return failed
 
 
 def _auto_install_missing(

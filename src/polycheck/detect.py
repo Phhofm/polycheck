@@ -77,22 +77,34 @@ def detect(repo: Path) -> list[Language]:
     if not repo.is_dir():
         raise NotADirectoryError(f"{repo} is not a directory")
 
+    found = _detect_by_markers(repo)
+    _detect_shell_by_extension(repo, found)
+
+    return found
+
+
+def _detect_by_markers(repo: Path) -> list[Language]:
+    """Detect languages by checking for marker files/directories."""
     found: list[Language] = []
     for lang in LANGUAGES:
-        for marker in lang.markers:
-            if marker.endswith("/"):
-                # Directory marker (e.g. ".github/workflows")
-                if (repo / marker).is_dir():
-                    found.append(lang)
-                    break
-            else:
-                if (repo / marker).exists():
-                    found.append(lang)
-                    break
+        if _has_marker(repo, lang):
+            found.append(lang)
+    return found
 
-    # Shell: also detect by file extension if any .sh files exist at root.
+
+def _has_marker(repo: Path, lang: Language) -> bool:
+    """Check if a language has any of its markers in the repo."""
+    for marker in lang.markers:
+        if marker.endswith("/"):
+            if (repo / marker).is_dir():
+                return True
+        elif (repo / marker).exists():
+            return True
+    return False
+
+
+def _detect_shell_by_extension(repo: Path, found: list[Language]) -> None:
+    """Also detect shell by file extension if any .sh files exist at root."""
     if any(p.suffix == ".sh" for p in repo.iterdir() if p.is_file()):
         if not any(lang.slug == "shell" for lang in found):
             found.append(Language("shell", "Shell", ()))
-
-    return found

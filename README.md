@@ -2,27 +2,184 @@
 
 > **Stop wasting LLM tokens re-reading codebases.**
 > polycheck runs the cheap, exhaustive static-analysis pass first
-> (linters, type-checkers, CVE scanners, secret scanners) and hands
-> the LLM a tight, structured report to triage. The LLM never has to
-> read source code it doesn't need to.
-
-```bash
-pipx install polycheck        # 1. install (or: pipx install git+https://github.com/Phhofm/polycheck.git)
-polycheck doctor && polycheck install --all -y   # 2. install the analyzers
-polycheck run ~/code/myproject                   # 3. scan
-polycheck prompt --plain                         # 4. copy the triage prompt → paste it to your LLM with the report
-```
-
-**That's the whole loop.** Reports land in
-`<repo>/polycheck-reports/`. The LLM reads the report, not the code.
+> (linters, type-checkers, CVE scanners, secret scanners, SonarQube)
+> and hands the LLM a tight, structured report to triage. The LLM
+> never has to read source code it doesn't need to.
 
 > **Self-audit:** `polycheck run .` on this repo's source tree returns
-> **0 findings at MEDIUM+ severity** across all 7 bundled Python
-> analyzers. Last verified: 0.1.0.
+> **0 findings at MEDIUM+ severity** across all 8 bundled analyzers
+> (including SonarQube via sonarless). Last verified: 0.1.0.
 
 ---
 
-## What you get
+## Quick Start: Use in Claude Code / Kilo Code / opencode (Recommended)
+
+The easiest way to use polycheck. Add it as an MCP tool and your LLM
+will guide you through the entire workflow — checking dependencies,
+running the scan, presenting findings, and fixing issues interactively.
+
+### Step 1: Install polycheck
+
+```bash
+pipx install polycheck
+# Or from source:
+pipx install "git+https://github.com/Phhofm/polycheck.git"
+```
+
+### Step 2: Add MCP config
+
+**Claude Code** — add to `~/.claude/settings.json` or project `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "polycheck": {
+      "command": "polycheck",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Kilo Code (VSCode Extension)** — add to `kilo.jsonc` in your project root or `~/.config/kilo/kilo.jsonc`:
+
+```json
+{
+  "mcp": {
+    "polycheck": {
+      "type": "local",
+      "command": ["polycheck", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**opencode** — add to `opencode.jsonc` in your project root:
+
+```json
+{
+  "mcp": {
+    "polycheck": {
+      "type": "local",
+      "command": ["polycheck", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Any MCP-compatible tool** (generic JSON):
+
+```json
+{
+  "mcpServers": {
+    "polycheck": {
+      "command": "polycheck",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Step 3: Ask your LLM
+
+In your project, type:
+
+```
+run polycheck
+```
+
+or
+
+```
+check my code for bugs using polycheck
+```
+
+### What Happens
+
+The LLM will:
+
+1. **Check dependencies** — runs `polycheck.doctor` to see what's installed
+2. **Install missing tools** — asks if you want to install missing analyzers
+3. **Run the full scan** — runs `polycheck.audit_run` on your repo
+4. **Present findings** — grouped by severity, color-coded:
+   - CRITICAL/HIGH first (urgent — likely real bugs)
+   - MEDIUM next (real smells, worth fixing)
+   - LOW/INFO only if you ask
+5. **Tell you what found each issue** — ruff, mypy, sonarless, gitleaks, etc.
+6. **Ask before fixing** — "Should I fix the HIGH/CRITICAL issues?"
+7. **Apply fixes** — only after your approval
+8. **Summarize** — what was fixed, what was deferred, what was false positive
+
+**Docker installed?** polycheck will automatically use
+[sonarless](https://github.com/gitricko/sonarless) for SonarQube
+analysis — bugs, vulnerabilities, and code smells across 30+ languages.
+If Docker isn't available, it skips silently with a hint to install it.
+
+---
+
+## CLI Usage (Manual)
+
+If you prefer running polycheck directly without an LLM:
+
+```bash
+polycheck run [PATH]                      # run all applicable tools
+polycheck run . --tool ruff --tool mypy    # restrict to specific tools
+polycheck run . --severity MEDIUM          # drop INFO / LOW findings
+polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
+polycheck run . --install                  # install missing tools, then run
+polycheck run . --parallel                 # run tools concurrently
+polycheck run . --output markdown          # markdown only (no JSON / sarif)
+polycheck doctor                           # show installed/missing tools
+polycheck install                          # install every missing tool
+polycheck install ruff mypy                # install specific tools
+polycheck list-tools                       # list every available analyzer
+polycheck prompt --plain                   # print the triage prompt
+polycheck mcp                              # start the MCP server
+```
+
+`polycheck run` exits with code **1** if any finding is at or above
+`--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` in CI.
+
+### The Triage Prompt
+
+After `polycheck run`, paste the triage prompt + report into your LLM:
+
+```bash
+polycheck prompt --plain    # prints just the prompt
+```
+
+The LLM reads the report (not the source code) and triages each finding
+as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
+
+---
+
+## MCP Server Reference
+
+polycheck ships an MCP server with **5 tools** and **3 resources**.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `polycheck.audit_run` | Run the full pipeline on a repo. Returns report paths + summary. |
+| `polycheck.list_tools` | List every analyzer and its status. |
+| `polycheck.explain_finding` | Explain a category (CVE, SECURITY, LINT, etc.) and how to triage. |
+| `polycheck.doctor` | Check Docker, sonarless, and all analyzers. Shows what's installed vs missing. |
+| `polycheck.install` | Install missing tools (all or specific ones). |
+
+### Resources
+
+| Resource | Description |
+|----------|-------------|
+| `polycheck://triage/prompt` | The interactive LLM triage prompt. |
+| `polycheck://findings/markdown` | Last run's markdown report. |
+| `polycheck://findings/json` | Last run's JSON report. |
+
+---
+
+## What You Get
 
 `polycheck run <repo>` writes a `<repo>/polycheck-reports/` directory:
 
@@ -34,144 +191,18 @@ Each finding has a stable schema:
 
 ```json
 {
-  "tool": "ruff",
-  "rule": "I001",
-  "severity": "LOW",                  // INFO | LOW | MEDIUM | HIGH | CRITICAL
-  "category": "lint",                 // lint | type | security | dead_code | deps | cve | secrets
-  "message": "Import block is un-sorted or un-formatted",
-  "file": "src/foo.py",
-  "line": 12,
-  "column": 1,
-  "fixable": true,
-  "fix_command": "ruff check --fix .",
-  "doc_url": "https://docs.astral.sh/ruff/rules/i001"
+  "tool": "sonarless",
+  "rule": "sonar:bug:S3776",
+  "severity": "HIGH",
+  "category": "security",
+  "message": "Complexity of this function is too high",
+  "file": "src/parser.py",
+  "line": 42,
+  "fixable": false
 }
 ```
 
-polycheck auto-detects the languages in your repo, picks the
-applicable analyzers, dedupes cross-tool reports, and filters by
-severity. The default floor is `INFO` (everything is reported); pass
-`--severity MEDIUM` to drop noise.
-
-## The LLM triage prompt
-
-After `polycheck run`, hand this prompt to an LLM (Claude Code, Kilo
-Code, opencode, or a chat):
-
-````markdown
-You are a senior code reviewer. The file `polycheck-report.md` is the
-output of a static-analysis pipeline. It contains LINT, TYPE,
-SECURITY, DEAD_CODE, DEPS, and SECRETS findings with file, line,
-rule id, severity, and the analyzer's message.
-
-Triage every finding as one of:
-
-  REAL BUG       — must be fixed; do not ship without a fix.
-  REAL SMELL     — not wrong, but worth refactoring; flag for follow-up.
-  FALSE POSITIVE — analyzer is wrong here; suppress or whitelist.
-  DEFERRED       — known issue, tracked elsewhere; leave it.
-
-For REAL BUG and REAL SMELL, give the smallest possible patch. Do not
-rewrite surrounding code. Do not add new dependencies. Do not change
-public APIs unless the finding says to. Prefer the analyzer's
-suggested fix if one exists.
-
-Ignore findings that are clearly tooling noise (e.g. "Library stubs
-not installed for X" from mypy — that's the lint venv, not the
-project).
-
-Do not re-read the source files unless a finding's message is
-genuinely ambiguous. Trust the static report. Read the full markdown
-report with the `read_file` tool, then the JSON report with
-`read_file` for any findings you need full `raw` data on.
-
-When you're done, return a single JSON object shaped like:
-
-{
-  "actions": [
-    {
-      "tool": "ruff",
-      "rule": "I001",
-      "file": "src/foo.py",
-      "line": 12,
-      "verdict": "REAL BUG",
-      "patch": "…unified diff or null…",
-      "comment": "one sentence"
-    }
-  ],
-  "summary": "X real bugs, Y real smells, Z false positives, W deferred"
-}
-````
-
-Print it any time with `polycheck prompt --plain`.
-
-## Installation
-
-```bash
-# Recommended: pipx (isolated venv, no global pollution)
-pipx install polycheck
-
-# Alternative: pip
-pip install polycheck
-
-# From source (current dev branch)
-pipx install "git+https://github.com/Phhofm/polycheck.git"
-
-# Editable local checkout (for hacking on polycheck itself)
-git clone https://github.com/Phhofm/polycheck.git
-cd polycheck
-pipx install -e .
-```
-
-The polycheck Python package is small (4 deps: typer, rich, pyyaml,
-mcp). The analyzers it shells out to — ruff, mypy, gitleaks, etc. —
-are *your* responsibility. polycheck skips tools that aren't on your
-`PATH`; use the `polycheck doctor` + `polycheck install` commands to
-manage them.
-
-Quick install of the common Python set:
-
-```bash
-pipx install ruff mypy vulture deptry pip-audit
-brew install gitleaks              # macOS — see https://github.com/gitleaks/gitleaks for Linux
-```
-
-## Verify the install
-
-```bash
-polycheck --version     # → polycheck 0.1.0
-polycheck doctor        # → table of installed/missing tools
-polycheck list-tools    # → all 15 bundled analyzers
-```
-
-## Usage
-
-```bash
-polycheck run [PATH]                      # run all applicable tools
-polycheck run . --tool ruff --tool mypy    # restrict to specific tools
-polycheck run . --severity MEDIUM          # drop INFO / LOW findings
-polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
-polycheck run . --install                  # install missing tools, then run
-polycheck run . --parallel                 # run tools concurrently
-polycheck run . --no-dedupe                # skip cross-tool dedup
-polycheck run . --output markdown          # markdown only (no JSON / sarif)
-polycheck run . --output json,sarif        # multiple formats
-polycheck doctor                           # show installed/missing tools
-polycheck install                          # install every missing tool
-polycheck install ruff mypy                # install specific tools
-polycheck install --all -y                 # reinstall everything (no prompt)
-polycheck list-tools                       # list every available analyzer
-polycheck explain <tool> [rule]            # show a tool's doc URL
-polycheck detected [PATH]                  # show detected languages
-polycheck prompt                           # show the LLM triage prompt
-polycheck prompt --plain                   # prompt only, no explanation
-polycheck --version
-polycheck mcp                              # start the MCP server
-```
-
-`polycheck run` exits with code **1** if any finding is at or above
-`--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` (or `CRITICAL`)
-in CI to surface only the most serious defects.
+---
 
 ## Configuration
 
@@ -182,6 +213,7 @@ enable:                 # only run these tools (default: all applicable)
   - ruff
   - mypy
   - gitleaks
+  - sonarless
 disable:                # never run these tools
   - pylint
 severity_threshold: MEDIUM
@@ -194,7 +226,41 @@ extra_args:             # per-tool extra CLI args
   eslint: ["--max-warnings", "0"]
 ```
 
-## How it works
+**sonarless** is enabled by default when Docker is available. Disable it with:
+
+```yaml
+disable:
+  - sonarless
+```
+
+---
+
+## Tool Matrix
+
+| Language / Surface | Tool            | What it does                            |
+|--------------------|-----------------|-----------------------------------------|
+| Python             | ruff            | Fast linter + import sort               |
+| Python             | mypy            | Static type checker                     |
+| Python             | vulture         | Dead code (with whitelist support)      |
+| Python             | pip-audit       | CVE scan in dependencies                |
+| Python             | deptry          | Missing / unused dependencies           |
+| JS / TS            | eslint          | Linter (ESLint v9 flat config + legacy) |
+| JS / TS            | tsc             | TypeScript type checker                 |
+| JS / TS            | knip            | Unused files, exports, dependencies     |
+| JS / TS            | npm-audit       | CVE scan in dependencies                |
+| JS / TS            | depcheck        | Missing / unused dependencies           |
+| Universal          | gitleaks        | Secrets in working tree + git history   |
+| Universal          | semgrep         | Pattern-based security (multi-language) |
+| Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
+| GitHub Actions     | actionlint      | Workflow file linter                    |
+| Shell              | shellcheck      | Shell script linter                     |
+| Docker             | hadolint        | Dockerfile linter                       |
+
+Install hints are exposed via `polycheck explain <tool>`.
+
+---
+
+## How It Works
 
 ```
                 ┌────────────────────────────────────────────┐
@@ -206,7 +272,7 @@ extra_args:             # per-tool extra CLI args
    ┌────────────┬─────────────┬───────┴────────┬──────────────┐
    │ Python     │ JS / TS     │ Universal      │ Polyglot     │
    │ ruff       │ eslint      │ gitleaks       │ semgrep      │
-   │ mypy       │ tsc         │                │              │
+   │ mypy       │ tsc         │ **sonarless**  │              │
    │ vulture    │ knip        │                │              │
    │ pip-audit  │ npm-audit   │                │              │
    │ deptry     │ depcheck    │                │              │
@@ -230,65 +296,37 @@ A finding has a `fingerprint` of
 `(tool, rule, file, line, column)`, so two tools reporting the same
 defect converge to one row.
 
-## Tool matrix
+### sonarless (Docker-based)
 
-| Language / Surface | Tool            | What it does                            |
-|--------------------|-----------------|-----------------------------------------|
-| Python             | ruff            | Fast linter + import sort               |
-| Python             | mypy            | Static type checker                     |
-| Python             | vulture         | Dead code (with whitelist support)      |
-| Python             | pip-audit       | CVE scan in dependencies                |
-| Python             | deptry          | Missing / unused dependencies           |
-| JS / TS            | eslint          | Linter (ESLint v9 flat config + legacy) |
-| JS / TS            | tsc             | TypeScript type checker                 |
-| JS / TS            | knip            | Unused files, exports, dependencies     |
-| JS / TS            | npm-audit       | CVE scan in dependencies                |
-| JS / TS            | depcheck        | Missing / unused dependencies           |
-| Universal          | gitleaks        | Secrets in working tree + git history   |
-| Universal          | semgrep         | Pattern-based security (multi-language) |
-| GitHub Actions     | actionlint      | Workflow file linter                    |
-| Shell              | shellcheck      | Shell script linter                     |
-| Docker             | hadolint        | Dockerfile linter                       |
+sonarless starts a local SonarQube instance in Docker, scans your code,
+and queries the SonarQube API for per-file issues. It covers 30+
+languages for bugs, vulnerabilities, code smells, and security hotspots.
 
-Install hints are exposed via `polycheck explain <tool>`.
+- Requires **Docker** installed and running
+- Install: `curl -s https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash`
+- Web UI: `http://localhost:9234` (admin/Son@rless123)
+- Clean up: `sonarless docker-clean`
 
-## MCP server
+**PATH setup:** After installing sonarless, add it to your PATH:
 
-polycheck ships an MCP server. Wire it into Kilo Code, Claude Code,
-or opencode:
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/.sonarless:$PATH"
 
-```json
-{
-  "mcpServers": {
-    "polycheck": {
-      "command": "polycheck",
-      "args": ["mcp"]
-    }
-  }
-}
+# Or create a wrapper script
+echo '#!/bin/bash
+exec $HOME/.sonarless/makefile.sh "$@"' > $HOME/.sonarless/sonarless
+chmod +x $HOME/.sonarless/sonarless
 ```
 
-Three tools are exposed:
+**Note for opencode users:** If you're using opencode in a sandboxed
+environment, Docker may not be accessible due to snap confinement.
+Install Docker via apt (`sudo apt install docker.io`) instead of snap
+for full compatibility.
 
-  * `polycheck.audit_run` — run the full pipeline on a repo.
-  * `polycheck.list_tools` — list every analyzer.
-  * `polycheck.explain_finding` — explain a category (CVE, DEAD_CODE,
-    LINT, …) and how to triage findings in it.
+---
 
-Three resources are exposed:
-
-  * `polycheck://triage/prompt` — the LLM triage prompt.
-  * `polycheck://findings/markdown` — last run's markdown report.
-  * `polycheck://findings/json` — last run's JSON report.
-
-A typical agent flow:
-
-  1. `polycheck.audit_run` against the repo.
-  2. `read_file` the markdown report from the resource URI.
-  3. Apply the triage prompt.
-  4. Optionally write patches.
-
-## Adding a language or tool
+## Adding a Language or Tool
 
 Adding a new analyzer is a single file:
 
@@ -318,6 +356,8 @@ To add a new **language** (e.g. Go, Rust), add a marker to the
 that already speak the language (e.g. semgrep, gitleaks) will pick it
 up automatically. New language-specific tools just set
 `languages = ["go"]`.
+
+---
 
 ## Origin
 
@@ -349,6 +389,8 @@ polycheck is that wrapper. It doesn't try to understand your code. It
 lets your linters do what they're good at, and hands the LLM a tight
 report to act on.
 
+---
+
 ## Philosophy
 
   * **Static analyzers are cheap; reading code is expensive.**
@@ -363,6 +405,8 @@ report to act on.
     do that better than any LLM would.
   * **Reports are git-tracked.** `polycheck-reports/` is plain
     text. Diff it across PRs.
+
+---
 
 ## License
 
