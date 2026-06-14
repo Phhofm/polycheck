@@ -12,11 +12,15 @@
 
 ---
 
-## Quick Start: Use in Claude Code / Kilo Code / opencode (Recommended)
+## Quick Start: Use in Claude Code / Kilo Code / OpenCode (Recommended)
 
 The easiest way to use polycheck. Add it as an MCP tool and your LLM
 will guide you through the entire workflow — checking dependencies,
 running the scan, presenting findings, and fixing issues interactively.
+
+- [Claude Code](https://claude.com/product/claude-code) — Anthropic's AI coding assistant
+- [Kilo Code](https://kilo.ai/) — VSCode extension for AI-assisted development
+- [OpenCode](https://opencode.ai/) — Open-source AI coding assistant
 
 ### Step 1: Install polycheck
 
@@ -55,7 +59,7 @@ pipx install "git+https://github.com/Phhofm/polycheck.git"
 }
 ```
 
-**opencode** — add to `opencode.jsonc` in your project root:
+**OpenCode** — add to `opencode.jsonc` in your project root:
 
 ```json
 {
@@ -319,7 +323,7 @@ exec $HOME/.sonarless/makefile.sh "$@"' > $HOME/.sonarless/sonarless
 chmod +x $HOME/.sonarless/sonarless
 ```
 
-**Note for opencode users:** If you're using opencode in a sandboxed
+**Note for OpenCode users:** If you're using OpenCode in a sandboxed
 environment, Docker may not be accessible due to snap confinement.
 Install Docker via apt (`sudo apt install docker.io`) instead of snap
 for full compatibility.
