@@ -319,6 +319,36 @@ that already speak the language (e.g. semgrep, gitleaks) will pick it
 up automatically. New language-specific tools just set
 `languages = ["go"]`.
 
+## Origin
+
+polycheck started because a coworker pasted this prompt into Claude Code
+for two projects:
+
+> *"Go bug hunting, carefully analyze the entire code. Create a list of
+> bugs and errors. Sort by critical to minor. Max 20 items."*
+
+It burned through a massive amount of tokens and produced very little
+useful outcome. The LLM was re-reading code that existing tools already
+analyze faster and more reliably.
+
+That's when it clicked: **there's a more efficient way to use LLMs.**
+Static analyzers already do the cheap, exhaustive pass — linting, type
+checking, CVE scanning, secret detection. Give the LLM the structured
+report from those tools, and it can focus on triage and verification
+instead of re-reading everything from scratch.
+
+We need to learn to *combine* new technology with established tools,
+not replace the old with the new. It reminds me of the blockchain hype
+during university — everyone wanted to use it as a distributed database
+when highly optimized systems already existed for that. The same pattern
+is repeating with LLMs: they're not the solution for *everything*.
+Sometimes the right answer is a thin wrapper that connects tools that
+already work.
+
+polycheck is that wrapper. It doesn't try to understand your code. It
+lets your linters do what they're good at, and hands the LLM a tight
+report to act on.
+
 ## Philosophy
 
   * **Static analyzers are cheap; reading code is expensive.**
