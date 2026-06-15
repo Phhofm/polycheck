@@ -24,7 +24,7 @@ class ShellcheckTool(Tool):
     name = "shellcheck"
     category = Category.LINT
     languages = ["shell"]
-    installer = "brew:shellcheck"
+    installer = "apt:shellcheck"
 
     def is_applicable(self, repo: Path) -> bool:
         return any(repo.glob("**/*.sh")) or any(repo.glob("**/bin/*"))

@@ -100,7 +100,11 @@ class Tool(abc.ABC):
         cmd = build_install_command(self.installer, self.name)
         if cmd is not None:
             return cmd
-        return f"# install {self.name} (see https://github.com/search?q={self.name})"
+        # For GitHub releases, show the releases page
+        if self.installer and self.installer.startswith("github:"):
+            repo_path = self.installer[len("github:"):]
+            return f"download from https://github.com/{repo_path}/releases"
+        return f"install {self.name} manually (no automatic installer available)"
 
     def install(self) -> tuple[bool, str]:
         """Attempt to install the tool. Returns ``(success, message)``.
@@ -116,7 +120,17 @@ class Tool(abc.ABC):
             return True, f"{self.name} is already installed"
         cmd = build_install_command(self.installer, self.name)
         if cmd is None:
+            # Check if this is a github: installer to give better message
+            if self.installer and self.installer.startswith("github:"):
+                repo_path = self.installer[len("github:"):]
+                return False, (
+                    f"no automatic installer for {self.name}; "
+                    f"download from https://github.com/{repo_path}/releases"
+                )
             return False, f"no automatic installer for {self.name}; see {self.install_hint()}"
+        # Check if required package manager is available
+        if not self._check_package_manager(cmd):
+            return False, f"required package manager not found for {self.name}"
         # shlex.split honours quotes, so "brew install hadolint" stays
         # as two argv entries and a quoted install is preserved.
         import shlex
@@ -135,6 +149,18 @@ class Tool(abc.ABC):
         if self.is_installed():
             return True, f"installed {self.name}"
         return False, f"`{cmd}` returned 0 but `{self.binary}` is still not on PATH"
+
+    def _check_package_manager(self, cmd: str) -> bool:
+        """Check if the required package manager is available."""
+        if "brew " in cmd:
+            return shutil.which("brew") is not None
+        if "npm " in cmd:
+            return shutil.which("npm") is not None
+        if "pipx " in cmd:
+            return shutil.which("pipx") is not None
+        if "apt " in cmd:
+            return shutil.which("apt") is not None
+        return True
 
     def version(self) -> str | None:
         """Return the installed tool's version string, or None if it
@@ -183,17 +209,15 @@ def build_install_command(installer: str | None, name: str) -> str | None:
     """Render an installer string into a concrete shell command.
 
     Returns None if the installer kind is unknown or no installer is
-    set. ``github:<owner>/<repo>`` is intentionally not auto-rendered
-    because the right tarball URL depends on the OS + arch; the user
-    is shown the project page instead.
+    set. ``github:<owner>/<repo>`` returns None because the right
+    tarball URL depends on the OS + arch; the user is shown the
+    project page instead.
     """
     if not installer:
         return None
     if installer.startswith("github:"):
-        return (
-            f"# download a release from "
-            f"https://github.com/{installer[len('github:'):]}/releases"
-        )
+        # Can't auto-install from GitHub releases — show manual instructions
+        return None
     kind, _, pkg = installer.partition(":")
     template = _INSTALLERS.get(kind)
     if template is None:

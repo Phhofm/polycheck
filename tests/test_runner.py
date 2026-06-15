@@ -97,7 +97,7 @@ def test_runner_picks_up_stub(tmp_path: Path):
     assert results[0].tool == "stub"
 
 
-def test_runner_marks_errors():
+def test_runner_marks_errors(tmp_path: Path):
     class _Boom(Tool):
         name = "boom"
         category = Category.LINT
@@ -115,9 +115,12 @@ def test_runner_marks_errors():
     from polycheck.registry import ToolRegistry
     from polycheck.runner import Runner
 
+    # Create a Python file so the language is detected
+    (tmp_path / "test.py").write_text("x = 1\n")
+
     reg = ToolRegistry()
     reg.register(_Boom)
-    runner = Runner(repo=Path("."), config=Config(), registry=reg)
+    runner = Runner(repo=tmp_path, config=Config(), registry=reg)
     findings, results = runner.run()
     assert findings == []
     assert results[0].status == "error"

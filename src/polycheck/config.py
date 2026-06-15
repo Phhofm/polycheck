@@ -73,7 +73,7 @@ class Config:
         try:
             text = path.read_text(encoding="utf-8")
             if path.suffix == ".toml":
-                return cls._parse_toml(text)
+                return Config._parse_toml(text)
             return yaml.safe_load(text) or {}
         except (yaml.YAMLError, ValueError) as e:
             raise ConfigError(f"Could not parse {path}: {e}") from e

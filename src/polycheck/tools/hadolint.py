@@ -25,7 +25,7 @@ class HadolintTool(Tool):
     category = Category.LINT
     languages = []   # applies to Dockerfiles
     universal = False
-    installer = "brew:hadolint"
+    installer = "github:hadolint/hadolint"
 
     def is_applicable(self, repo: Path) -> bool:
         return any(repo.glob("**/Dockerfile*")) or (repo / "Dockerfile").exists()

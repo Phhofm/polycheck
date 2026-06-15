@@ -31,8 +31,7 @@ from .registry import default_registry
 from .reporters import render as render_report
 from .runner import Runner, dedupe, filter_by_severity
 
-if TYPE_CHECKING:
-    from mcp.types import TextContent
+from mcp.types import TextContent
 
 # Module-level state for the last run's reports. Safe for stdio transport
 # (single request at a time). Not thread-safe for concurrent requests.
@@ -65,6 +64,20 @@ DEPS, CVE, and SECRETS findings — including results from SonarQube
 5. Apply fixes ONLY after user approval.
 6. Summarize: what was fixed, what was deferred, what was flagged as
    false positive.
+
+## Missing Tools
+
+If the report mentions missing tools or the user asks about installing them:
+
+1. Run `polycheck.doctor` to check which tools are installed.
+2. For tools that can be auto-installed (pipx, npm, apt), run
+   `polycheck.install` with the tool names.
+3. For tools requiring manual installation (e.g., Docker for sonarless):
+   - **Docker**: Guide the user to install Docker Desktop for their OS:
+     * Linux: `sudo apt install docker.io && sudo usermod -aG docker $USER`
+     * Or follow https://docs.docker.com/get-docker/
+     * After install, log out and back in for group changes to take effect
+   - After Docker is installed, sonarless can be used automatically.
 
 ## Triage Rules
 

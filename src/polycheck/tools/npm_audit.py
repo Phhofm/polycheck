@@ -29,7 +29,7 @@ class NpmAuditTool(Tool):
     name = "npm-audit"
     category = Category.CVE
     languages = ["javascript", "typescript"]
-    installer = "brew:npm"   # comes with Node.js itself
+    installer = None   # npm comes with Node.js; no separate install needed
 
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "package.json").exists()

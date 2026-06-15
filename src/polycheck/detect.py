@@ -72,6 +72,8 @@ def detect(repo: Path) -> list[Language]:
     .github/workflows subtree for GitHub Actions) is enough. The
     function does NOT walk the whole tree — that would be slow on
     monorepos, and most tools work off the root anyway.
+
+    Also detects by file extensions in the root directory.
     """
     repo = Path(repo).resolve()
     if not repo.is_dir():
@@ -79,6 +81,7 @@ def detect(repo: Path) -> list[Language]:
 
     found = _detect_by_markers(repo)
     _detect_shell_by_extension(repo, found)
+    _detect_by_file_extension(repo, found)
 
     return found
 
@@ -108,3 +111,41 @@ def _detect_shell_by_extension(repo: Path, found: list[Language]) -> None:
     if any(p.suffix == ".sh" for p in repo.iterdir() if p.is_file()):
         if not any(lang.slug == "shell" for lang in found):
             found.append(Language("shell", "Shell", ()))
+
+
+# File extension to language slug mapping
+_EXT_TO_LANG: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".rb": "ruby",
+    ".php": "php",
+    ".cs": "csharp",
+    ".kt": "kotlin",
+    ".swift": "swift",
+    ".scala": "scala",
+    ".ex": "elixir",
+    ".hs": "haskell",
+}
+
+
+def _detect_by_file_extension(repo: Path, found: list[Language]) -> None:
+    """Detect languages by file extensions in the root directory.
+
+    This catches single-file projects that lack marker files.
+    """
+    found_slugs = {lang.slug for lang in found}
+    for p in repo.iterdir():
+        if not p.is_file():
+            continue
+        lang_slug = _EXT_TO_LANG.get(p.suffix)
+        if lang_slug and lang_slug not in found_slugs:
+            # Find the Language object for this slug
+            for lang in LANGUAGES:
+                if lang.slug == lang_slug:
+                    found.append(lang)
+                    found_slugs.add(lang_slug)
+                    break

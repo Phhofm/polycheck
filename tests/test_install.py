@@ -64,8 +64,8 @@ def test_build_install_command_apt():
 
 def test_build_install_command_github_returns_url():
     out = build_install_command("github:gitleaks/gitleaks", "gitleaks")
-    assert out is not None
-    assert "github.com/gitleaks/gitleaks/releases" in out
+    # GitHub releases can't be auto-installed, so returns None
+    assert out is None
 
 
 def test_build_install_command_unknown_kind():
@@ -83,7 +83,7 @@ def test_install_hint_uses_installer():
 def test_install_hint_fallback_when_no_installer():
     hint = _NoInstallerTool().install_hint()
     assert "manual" in hint
-    assert "# install" in hint
+    assert "no automatic installer" in hint
 
 
 def test_install_returns_already_installed(tmp_path: Path, monkeypatch):
