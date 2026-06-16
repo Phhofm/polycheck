@@ -28,9 +28,10 @@ or:
 run polycheck
 ```
 
-The LLM calls one guided MCP workflow. polycheck checks dependencies,
-reports missing tools, runs local analyzers, writes reports, summarizes
-findings, and asks before installing tools or applying fixes.
+The LLM calls one guided MCP workflow tool, `polycheck.run`. polycheck
+checks dependencies, reports missing tools, runs local analyzers, writes
+reports, summarizes findings, and asks before installing tools or applying
+fixes.
 
 ### Step 1: Install polycheck
 
@@ -118,7 +119,7 @@ What happens:
 4. Reports are written to `polycheck-reports/`.
 5. The LLM shows a compact summary grouped by tool and severity.
 6. If fixable findings exist, the LLM asks before applying fixes.
-7. After fixes, the LLM can rerun polycheck to verify the result.
+7. After fixes, the LLM can rerun `polycheck.run` to verify the result.
 
 Session summaries are written under `.polycheck/` so future LLM sessions
 can reference what was checked, skipped, fixed, or deferred.
@@ -129,7 +130,7 @@ sonarless enabled by default when those are available. If Docker is
 missing, polycheck reports it as a skipped system dependency and suggests
 asking your LLM coding assistant for OS-specific Docker setup help. If
 Docker is available but sonarless is missing, the guided MCP workflow
-offers to install sonarless before rerunning the scan.
+offers to install sonarless before rerunning `polycheck.run`.
 
 ---
 
@@ -173,14 +174,16 @@ as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
 
 ## MCP Server Reference
 
-polycheck ships an MCP server with one primary workflow tool and several
-advanced/low-level tools.
+polycheck ships an MCP server with one primary guided workflow tool,
+`polycheck.run`, plus a compatibility alias and several advanced/low-level
+tools.
 
 ### Primary tool
 
 | Tool | Description |
 |------|-------------|
-| `polycheck` | Run the guided workflow: dependency check, optional install approval, scan, reports, compact summary, and next action. |
+| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, and next action. Do not call `polycheck.doctor` manually for normal runs. |
+| `polycheck` | Compatibility alias for `polycheck.run`. |
 
 ### Advanced tools
 
@@ -196,7 +199,7 @@ advanced/low-level tools.
 
 | Resource | Description |
 |----------|-------------|
-| `polycheck://session/latest` | Latest guided workflow summary. |
+| `polycheck://session/latest` | Latest `polycheck.run` workflow summary. |
 | `polycheck://triage/prompt` | The interactive LLM triage prompt. |
 | `polycheck://findings/markdown` | Last run's markdown report. |
 | `polycheck://findings/json` | Last run's JSON report. |
@@ -289,10 +292,10 @@ Install hints are exposed via `polycheck explain <tool>`.
 
 ```
                 ┌────────────────────────────────────────────┐
-                │               polycheck run                │
+                │              polycheck.run                 │
                 └─────────────────────┬──────────────────────┘
                                       │
-       doctor → install ──► detect → filter → run → dedupe → group
+       dependency check → install approval → detect → filter → run → dedupe → group
                                       │
    ┌────────────┬─────────────┬───────┴────────┬──────────────┐
    │ Python     │ JS / TS     │ Universal      │ Polyglot     │

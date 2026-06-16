@@ -2,8 +2,9 @@
 
 Exposes one primary workflow tool to an AI agent:
 
-  * ``polycheck`` — guided dependency check, scan, reports, summary,
-    and next approval step.
+  * ``polycheck.run`` — primary guided dependency check, scan, reports,
+    summary, coverage metadata, and next approval step.
+  * ``polycheck`` — compatibility alias for ``polycheck.run``.
 
 And advanced/low-level tools:
 
@@ -65,25 +66,34 @@ DEPS, CVE, and SECRETS findings — including results from SonarQube
 
 ## Workflow
 
-1. Read the polycheck-report.md file.
-2. Present findings grouped by severity:
+1. For normal polycheck runs, call the guided MCP tool `polycheck.run`
+   first. Do not manually call `polycheck.doctor` or `polycheck.install`
+   unless the user explicitly asks for diagnostics.
+2. Read the returned `status`, `next_action`, and `scan_coverage`.
+3. If `status` is `needs_user_input` and the tool reports missing
+   analyzers, ask the user whether to approve installation.
+4. If the user approves, call `polycheck.run` again with:
+   - `install_mode: "tools_only"`
+   - `install_confirmed: true`
+5. Present findings grouped by severity:
    - CRITICAL and HIGH first (urgent — these are likely real bugs)
    - MEDIUM next (real smells, worth fixing)
    - LOW and INFO only if the user asks
-3. For each finding, tell the user:
+6. For each finding, tell the user:
    - Which tool found it (ruff, mypy, sonarless, gitleaks, etc.)
    - What the issue is (one sentence)
    - Why it matters (security risk, type error, dead code, etc.)
-4. Ask: "Should I fix the [HIGH/CRITICAL] issues?"
-5. Apply fixes ONLY after user approval.
-6. Summarize: what was fixed, what was deferred, what was flagged as
+7. Ask: "Should I fix the [HIGH/CRITICAL] issues?"
+8. Apply fixes ONLY after user approval.
+9. Summarize: what was fixed, what was deferred, what was flagged as
    false positive.
 
 ## Missing Tools
 
 If the report mentions missing tools or the user asks about installing them:
 
-1. Use the guided `polycheck` workflow again with `install_mode: "tools_only"`.
+1. Use the guided `polycheck.run` workflow again with
+   `install_mode: "tools_only"`.
 2. Ask the user to approve analyzer installation before setting
    `install_confirmed: true`.
 3. Do not manually chain `polycheck.doctor` and `polycheck.install` for
@@ -94,7 +104,9 @@ If the report mentions missing tools or the user asks about installing them:
      * Linux: `sudo apt install docker.io && sudo usermod -aG docker $USER`
      * Or follow https://docs.docker.com/get-docker/
      * After install, log out and back in for group changes to take effect
-   - After Docker is installed, sonarless can be used automatically.
+    - After Docker is installed, rerun `polycheck.run`; polycheck will
+      offer to install sonarless if it is still missing.
+
 
 
 ## Triage Rules
@@ -192,11 +204,61 @@ def run_server() -> None:
     anyio.run(_run)
 
 
+_WORKFLOW_TOOL_DESCRIPTION = (
+    "Primary guided workflow entrypoint for normal use. This is the "
+    "only tool most LLMs should call for polycheck. It checks dependencies, "
+    "offers approved analyzer installs, runs the scan, writes reports, "
+    "returns coverage metadata, and returns next_action. Do not call "
+    "polycheck.doctor or polycheck.install manually unless debugging."
+)
+
+
+def _workflow_tool(name: str):
+    from mcp.types import Tool
+
+    return Tool(
+        name=name,
+        description=_WORKFLOW_TOOL_DESCRIPTION,
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Path to the repo root"},
+                "tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Restrict to specific tool names",
+                },
+                "severity": {
+                    "type": "string",
+                    "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                    "description": "Minimum severity to keep. Default: MEDIUM.",
+                },
+                "install_mode": {
+                    "type": "string",
+                    "enum": ["none", "tools_only"],
+                    "description": "none or tools_only. Default: none.",
+                },
+                "install_confirmed": {
+                    "type": "boolean",
+                    "description": "Must be true when install_mode is tools_only. Default: false.",
+                },
+                "parallel": {
+                    "type": "boolean",
+                    "description": "Run tools concurrently. Default: true.",
+                },
+            },
+            "required": ["repo"],
+        },
+    )
+
+
 def _build_tool_definitions():
     """Build the list of MCP tool definitions."""
     from mcp.types import Tool
 
     return [
+        _workflow_tool("polycheck.run"),
+        _workflow_tool("polycheck"),
         Tool(
             name="polycheck.audit_run",
             description=(
@@ -217,45 +279,6 @@ def _build_tool_definitions():
                     "severity": {
                         "type": "string",
                         "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                    },
-                },
-                "required": ["repo"],
-            },
-        ),
-        Tool(
-            name="polycheck",
-            description=(
-                "Run the guided polycheck workflow. This is the primary "
-                "tool for LLM coding assistants: it checks dependencies, "
-                "runs the scan, writes reports, returns a compact summary, "
-                "and indicates the next user approval step."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "repo": {"type": "string", "description": "Path to the repo root"},
-                    "tools": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Restrict to specific tool names",
-                    },
-                    "severity": {
-                        "type": "string",
-                        "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                        "description": "Minimum severity to keep. Default: MEDIUM.",
-                    },
-                    "install_mode": {
-                        "type": "string",
-                        "enum": ["none", "tools_only"],
-                        "description": "none or tools_only. Default: none.",
-                    },
-                    "install_confirmed": {
-                        "type": "boolean",
-                        "description": "Must be true when install_mode is tools_only. Default: false.",
-                    },
-                    "parallel": {
-                        "type": "boolean",
-                        "description": "Run tools concurrently. Default: true.",
                     },
                 },
                 "required": ["repo"],
@@ -315,6 +338,7 @@ def _build_tool_definitions():
 def _dispatch_tool(name: str, arguments: dict):
     """Dispatch an MCP tool call to the appropriate handler."""
     handlers = {
+        "polycheck.run": _handle_polycheck,
         "polycheck": _handle_polycheck,
         "polycheck.audit_run": _handle_audit_run,
         "polycheck.list_tools": lambda _: _handle_list_tools(),
@@ -340,14 +364,14 @@ def _read_resource_content(uri: str) -> str:
         latest = _latest_session_markdown()
         if latest:
             return latest
-        return "(no session yet — run polycheck first)"
+        return "(no session yet — run polycheck.run first)"
     raise ValueError(f"Unknown resource: {uri}")
 
 
 def _last(name: str) -> str:
     path = _LAST_RUN.get("report_dir")
     if not path:
-        return "(no report yet — run polycheck.audit_run first)"
+        return "(no report yet — run polycheck.run first)"
     p = Path(path) / name
     if not p.exists():
         return f"(report not written: {p})"
@@ -581,6 +605,29 @@ def _install_missing_tools(missing_tools: list[dict]) -> list[dict]:
     return results
 
 
+def _scan_coverage(results: list, missing_tools: list[dict], missing_system: list[dict]) -> dict:
+    tools_run = [r.tool for r in results]
+    applicable_tools = len(tools_run) + len(missing_tools)
+    coverage = "full" if not missing_tools and not missing_system else "partial"
+    warnings = []
+    if missing_tools or missing_system:
+        warnings.append(
+            f"Partial scan: only {len(tools_run)} of {applicable_tools} applicable analyzers ran. "
+            "No findings does not mean the repo is clean."
+        )
+    if missing_system:
+        names = ", ".join(item.get("name", "system dependency") for item in missing_system)
+        warnings.append(f"Missing system dependencies blocked some analyzers: {names}.")
+    return {
+        "coverage": coverage,
+        "applicable_tools": applicable_tools,
+        "tools_run": tools_run,
+        "missing_tools": missing_tools,
+        "missing_system_dependencies": missing_system,
+        "warning": " ".join(warnings) if warnings else "",
+    }
+
+
 def _audit_summary(
     *,
     repo: Path,
@@ -659,6 +706,7 @@ def _workflow_summary(
     ]
     missing_tools = dependency["missing_tools"]
     missing_system = dependency["missing_system_dependencies"]
+    scan_coverage = _scan_coverage(results, missing_tools, missing_system)
     next_action = _next_action(
         findings=findings,
         missing_tools=missing_tools,
@@ -680,6 +728,7 @@ def _workflow_summary(
         "total_findings": len(findings),
         "by_severity": by_severity,
         "by_tool": by_tool,
+        "scan_coverage": scan_coverage,
         "tools_run": tools_run,
         "tools_skipped": missing_tools + missing_system,
         "missing_tools": missing_tools,
@@ -709,10 +758,14 @@ def _next_action(
         return f"install failed for {names}; ask user to review the install message and rerun"
     if missing_tools or missing_system:
         if install_requested and not install_confirmed:
-            return "ask user to confirm analyzer tool installation before continuing"
+            return "ask user to confirm analyzer tool installation before continuing with polycheck.run"
         if missing_system:
-            return "ask user whether to install analyzer tools, install system dependencies manually, or skip missing items and run with available tools"
-        return "ask user whether to install missing analyzer tools and rerun"
+            return (
+                "system dependencies are missing, so some analyzers did not run; "
+                "ask the user to install the listed system dependencies with their "
+                "LLM coding assistant or rerun with available tools"
+            )
+        return "ask user to approve installing missing analyzers, then rerun polycheck.run"
     if any(f.fixable for f in findings):
         return f"ask user whether to fix {severity}+ findings or skip fixes"
     if findings:

@@ -54,7 +54,53 @@ def test_handle_polycheck_writes_reports_and_session(tmp_path: Path, monkeypatch
     assert "ask user whether to fix" in payload["next_action"]
 
 
-def test_handle_polycheck_returns_completed_when_no_findings(tmp_path: Path, monkeypatch):
+def test_handle_polycheck_partial_scan_needs_user_input(tmp_path: Path, monkeypatch):
+    from polycheck import mcp_server
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None):
+            return [], []
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {
+            "missing_tools": [
+                {
+                    "name": "ruff",
+                    "kind": "analyzer",
+                    "install_hint": "pipx install ruff",
+                    "auto_installable": True,
+                    "risk": "low",
+                }
+            ],
+            "missing_system_dependencies": [],
+        },
+    )
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "severity": "MEDIUM",
+        "parallel": False,
+    })
+    payload = json.loads(response[0].text)
+
+    assert payload["status"] == "needs_user_input"
+    assert payload["total_findings"] == 0
+    assert payload["scan_coverage"]["coverage"] == "partial"
+    assert payload["scan_coverage"]["applicable_tools"] == 1
+    assert payload["scan_coverage"]["tools_run"] == []
+    assert payload["scan_coverage"]["missing_tools"][0]["name"] == "ruff"
+    assert "Partial scan" in payload["scan_coverage"]["warning"]
+    assert "polycheck.run" in payload["next_action"]
+
+
+def test_handle_polycheck_returns_completed_when_no_findings_and_full_coverage(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
     class _FakeRunner:
@@ -82,9 +128,9 @@ def test_handle_polycheck_returns_completed_when_no_findings(tmp_path: Path, mon
     assert payload["status"] == "completed"
     assert payload["next_action"] == ""
     assert payload["total_findings"] == 0
+    assert payload["scan_coverage"]["coverage"] == "full"
 
 
-def test_handle_polycheck_rejects_report_dir_traversal(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
     (tmp_path / ".polycheck.yml").write_text(
@@ -203,11 +249,26 @@ def test_dependency_check_scopes_system_dependency_to_requested_tools(tmp_path: 
     assert dependency["missing_system_dependencies"] == []
 
 
-def test_tool_definitions_include_primary_workflow_tool():
+def test_tool_definitions_include_primary_workflow_tool_and_alias():
     from polycheck import mcp_server
 
-    names = {tool.name for tool in mcp_server._build_tool_definitions()}
+    tools = {tool.name: tool for tool in mcp_server._build_tool_definitions()}
 
-    assert "polycheck" in names
-    assert "polycheck.audit_run" in names
-    assert "polycheck.list_tools" in names
+    assert "polycheck.run" in tools
+    assert "polycheck" in tools
+    assert "polycheck.audit_run" in tools
+    assert "polycheck.list_tools" in tools
+    assert "polycheck.doctor" in tools
+    assert "Do not call polycheck.doctor" in tools["polycheck.run"].description
+    assert "Compatibility alias" not in tools["polycheck.run"].description
+
+
+def test_dispatch_routes_alias_to_guided_workflow(monkeypatch):
+    from polycheck import mcp_server
+
+    calls = []
+    monkeypatch.setattr(mcp_server, "_handle_polycheck", lambda args: calls.append(args) or ["ok"])
+
+    assert mcp_server._dispatch_tool("polycheck.run", {"repo": "a"}) == ["ok"]
+    assert mcp_server._dispatch_tool("polycheck", {"repo": "b"}) == ["ok"]
+    assert calls == [{"repo": "a"}, {"repo": "b"}]
