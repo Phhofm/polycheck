@@ -70,8 +70,6 @@ class ToolRegistry:
         """Auto-import every module in ``polycheck.tools`` and register
         any ``Tool`` subclasses found. Returns the number of tools
         registered (including ones that were already there)."""
-        import inspect
-        import sys
 
         from . import tools as tools_pkg  # local import to avoid cycle
 

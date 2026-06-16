@@ -69,6 +69,9 @@ ignore = [
     "E501",  # tolerated for long URLs and tool output quotes
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["polycheck"]
+
 [tool.ruff.lint.per-file-ignores]
 # typer requires typer.Option/Argument calls in default values; ruff
 # flags them as B008 but the design is correct.
@@ -85,3 +88,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+pythonpath = ["src"]

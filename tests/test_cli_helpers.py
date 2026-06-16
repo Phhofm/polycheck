@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from polycheck.finding import Category, Finding, Severity
+from polycheck.registry import ToolRegistry
+from polycheck.tools.base import Tool
 
 
 def _f(severity: Severity, tool: str = "t", rule: str = "r") -> Finding:
@@ -43,15 +45,133 @@ def test_exit_code_unknown_threshold_is_permissive():
     assert _exit_code(findings, "BOGUS") == 0
 
 
-def test_missing_tools_filters_universal_on_empty_repo(tmp_path: Path):
+def test_missing_tools_filters_universal_on_empty_repo(tmp_path: Path, monkeypatch):
     """A universal tool whose binary is missing should be listed, but
     only when the repo has *some* content (otherwise gitleaks on an
     empty dir is just noise).
-
-    Note: sonarless is a universal tool that requires Docker, so it
-    will appear in missing tools even for Python repos. We exclude it
-    from this test's assertion since it's a special case.
     """
+    reg = ToolRegistry()
+
+    class _MissingUniversal(Tool):
+        name = "missing-universal"
+        category = Category.LINT
+        languages = []
+        universal = True
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    reg.register(_MissingUniversal)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
     from polycheck.cli import _missing_tools
+
     # Truly empty repo → no missing tools listed (no languages detected).
     assert _missing_tools(tmp_path, only=None, exclude=set()) == []
+
+
+def test_missing_tools_only_reports_applicable_language_tools(tmp_path: Path, monkeypatch):
+    reg = ToolRegistry()
+
+    class _MissingPython(Tool):
+        name = "missing-python"
+        category = Category.LINT
+        languages = ["python"]
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    class _MissingGo(Tool):
+        name = "missing-go"
+        category = Category.LINT
+        languages = ["go"]
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    reg.register(_MissingPython)
+    reg.register(_MissingGo)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+
+    from polycheck.cli import _missing_tools
+
+    missing = _missing_tools(tmp_path, only=None, exclude=set())
+    assert [cls.name for cls in missing] == ["missing-python"]
+
+
+def test_doctor_exits_zero_by_default_when_tools_missing(monkeypatch):
+    from typer.testing import CliRunner
+
+    from polycheck.cli import app
+
+    reg = ToolRegistry()
+
+    class _MissingPython(Tool):
+        name = "missing-python"
+        category = Category.LINT
+        languages = ["python"]
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    reg.register(_MissingPython)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
+    result = CliRunner().invoke(app, ["doctor"])
+    assert result.exit_code == 0
+    assert "missing-python" in result.output
+
+
+def test_doctor_fail_on_missing_exits_one(monkeypatch):
+    from typer.testing import CliRunner
+
+    from polycheck.cli import app
+
+    reg = ToolRegistry()
+
+    class _MissingPython(Tool):
+        name = "missing-python"
+        category = Category.LINT
+        languages = ["python"]
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    reg.register(_MissingPython)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
+    result = CliRunner().invoke(app, ["doctor", "--fail-on-missing"])
+    assert result.exit_code == 1
+    assert "missing-python" in result.output

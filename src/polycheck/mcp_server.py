@@ -1,9 +1,15 @@
 """polycheck MCP server (stdio transport).
 
-Exposes five tools to an AI agent:
+Exposes one primary workflow tool to an AI agent:
 
-  * ``polycheck.audit_run`` — run the full pipeline and return the
-    report paths + a short summary. Heavy: spawns subprocesses.
+  * ``polycheck`` — guided dependency check, scan, reports, summary,
+    and next approval step.
+
+And advanced/low-level tools:
+
+  * ``polycheck.audit_run`` — run the scan primitive and return the
+    report paths, dependency context, and a short summary. Heavy: spawns
+    subprocesses.
   * ``polycheck.list_tools`` — list available analyzers.
   * ``polycheck.explain_finding`` — explain a finding's category and
     how to triage it.
@@ -11,10 +17,11 @@ Exposes five tools to an AI agent:
     are missing. Reports Docker status for sonarless.
   * ``polycheck.install`` — install missing tools.
 
-And three resources:
+And resources for reports and session context:
 
   * ``polycheck://findings/markdown`` — last run's markdown report.
   * ``polycheck://findings/json`` — last run's JSON report.
+  * ``polycheck://session/latest`` — latest guided workflow summary.
   * ``polycheck://triage/prompt`` — the LLM triage prompt template.
 """
 from __future__ import annotations
@@ -22,16 +29,19 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+from mcp.types import TextContent
 
 from .config import Config
-from .finding import Category
+from .finding import Category, Severity
 from .registry import default_registry
 from .reporters import render as render_report
 from .runner import Runner, dedupe, filter_by_severity
-
-from mcp.types import TextContent
+from .session import append_event, write_run_summary, write_session_summary
+from .tools.base import Tool
 
 # Module-level state for the last run's reports. Safe for stdio transport
 # (single request at a time). Not thread-safe for concurrent requests.
@@ -40,6 +50,10 @@ _LAST_RUN: dict = {}
 # Status messages for tool availability checks.
 _STATUS_NOT_FOUND = "not found"
 _STATUS_INSTALLED = "installed"
+
+
+def _text_content(payload: dict) -> list:
+    return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 
 
 _TRIAGE_PROMPT = """\
@@ -69,15 +83,19 @@ DEPS, CVE, and SECRETS findings — including results from SonarQube
 
 If the report mentions missing tools or the user asks about installing them:
 
-1. Run `polycheck.doctor` to check which tools are installed.
-2. For tools that can be auto-installed (pipx, npm, apt), run
-   `polycheck.install` with the tool names.
-3. For tools requiring manual installation (e.g., Docker for sonarless):
-   - **Docker**: Guide the user to install Docker Desktop for their OS:
+1. Use the guided `polycheck` workflow again with `install_mode: "tools_only"`.
+2. Ask the user to approve analyzer installation before setting
+   `install_confirmed: true`.
+3. Do not manually chain `polycheck.doctor` and `polycheck.install` for
+   the normal workflow. Use those only for debugging or advanced use.
+4. For tools requiring manual installation, such as Docker for sonarless:
+   - **Docker**: Ask your LLM coding assistant to help install Docker
+     for this OS. Common options:
      * Linux: `sudo apt install docker.io && sudo usermod -aG docker $USER`
      * Or follow https://docs.docker.com/get-docker/
      * After install, log out and back in for group changes to take effect
    - After Docker is installed, sonarless can be used automatically.
+
 
 ## Triage Rules
 
@@ -153,6 +171,12 @@ def run_server() -> None:
                 description="The prompt to feed to an LLM with the markdown report.",
                 mimeType="text/plain",
             ),
+            Resource(
+                uri="polycheck://session/latest",
+                name="Latest polycheck session",
+                description="The latest guided workflow summary.",
+                mimeType="text/markdown",
+            ),
         ]
 
     @server.read_resource()
@@ -177,9 +201,9 @@ def _build_tool_definitions():
             name="polycheck.audit_run",
             description=(
                 "Run the polycheck pipeline on a repository. Returns the "
-                "report paths and a one-line summary. Use the "
-                "`polycheck://findings/markdown` resource to read the "
-                "full report."
+                "report paths, dependency context, and a one-line summary. "
+                "Use the `polycheck://findings/markdown` resource to read "
+                "the full report."
             ),
             inputSchema={
                 "type": "object",
@@ -193,6 +217,45 @@ def _build_tool_definitions():
                     "severity": {
                         "type": "string",
                         "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                    },
+                },
+                "required": ["repo"],
+            },
+        ),
+        Tool(
+            name="polycheck",
+            description=(
+                "Run the guided polycheck workflow. This is the primary "
+                "tool for LLM coding assistants: it checks dependencies, "
+                "runs the scan, writes reports, returns a compact summary, "
+                "and indicates the next user approval step."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Path to the repo root"},
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Restrict to specific tool names",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                        "description": "Minimum severity to keep. Default: MEDIUM.",
+                    },
+                    "install_mode": {
+                        "type": "string",
+                        "enum": ["none", "tools_only"],
+                        "description": "none or tools_only. Default: none.",
+                    },
+                    "install_confirmed": {
+                        "type": "boolean",
+                        "description": "Must be true when install_mode is tools_only. Default: false.",
+                    },
+                    "parallel": {
+                        "type": "boolean",
+                        "description": "Run tools concurrently. Default: true.",
                     },
                 },
                 "required": ["repo"],
@@ -252,6 +315,7 @@ def _build_tool_definitions():
 def _dispatch_tool(name: str, arguments: dict):
     """Dispatch an MCP tool call to the appropriate handler."""
     handlers = {
+        "polycheck": _handle_polycheck,
         "polycheck.audit_run": _handle_audit_run,
         "polycheck.list_tools": lambda _: _handle_list_tools(),
         "polycheck.explain_finding": _handle_explain,
@@ -272,6 +336,11 @@ def _read_resource_content(uri: str) -> str:
         return _last("polycheck-report.md")
     if uri == "polycheck://findings/json":
         return _last("polycheck-report.json")
+    if uri == "polycheck://session/latest":
+        latest = _latest_session_markdown()
+        if latest:
+            return latest
+        return "(no session yet — run polycheck first)"
     raise ValueError(f"Unknown resource: {uri}")
 
 
@@ -285,52 +354,385 @@ def _last(name: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def _handle_audit_run(arguments: dict) -> list:
+def _latest_session_markdown() -> str:
+    path_text = _LAST_RUN.get("latest_markdown", "")
+    if not path_text:
+        return ""
+    path = Path(path_text)
+    if not path.is_file():
+        path = Path(_LAST_RUN.get("repo", ".")) / ".polycheck" / "latest.md"
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _repo_from_arguments(arguments: dict) -> Path | list:
     repo = Path(arguments["repo"]).resolve()
     if not repo.exists():
-        return [TextContent(type="text", text=f"Repo not found: {repo}")]
+        return _text_content({"error": f"Repo not found: {repo}"})
     if not repo.is_dir():
-        return [TextContent(type="text", text=f"Not a directory: {repo}")]
+        return _text_content({"error": f"Not a directory: {repo}"})
+    return repo
+
+
+def _validate_report_dir(repo: Path, configured: str) -> Path | list:
+    configured_path = Path(configured)
+    if configured_path.is_absolute() or ".." in configured_path.parts:
+        return _text_content({"error": "output.report_dir must be a relative path inside the repo"})
+    base = (repo / configured_path).resolve()
+    try:
+        base.relative_to(repo.resolve())
+    except ValueError:
+        return _text_content({"error": "output.report_dir must stay inside the repo"})
+    return base
+
+
+def _guided_report_dir(repo: Path, configured: str, run_id: str) -> Path | list:
+    base = _validate_report_dir(repo, configured)
+    if isinstance(base, list):
+        return base
+    out_dir = base / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
+def _handle_audit_run(arguments: dict) -> list:
+    """Run the scan primitive and return report paths plus context."""
+    repo = _repo_from_arguments(arguments)
+    if isinstance(repo, list):
+        return repo
 
     cfg = Config.load(repo)
-    if arguments.get("severity"):
-        cfg.severity_threshold = arguments["severity"].upper()
+    severity = arguments.get("severity", "MEDIUM").upper()
+    if severity not in Severity.__members__:
+        return _text_content({"error": f"Unknown severity: {severity}"})
 
+    dependency = _dependency_check(repo, cfg, tools=arguments.get("tools"))
     runner = Runner(repo=repo, config=cfg)
-    findings, results = runner.run(tools=arguments.get("tools"))
+    findings, results = runner.run(
+        parallel=bool(arguments.get("parallel", True)),
+        tools=arguments.get("tools"),
+    )
+    findings = dedupe(findings)
+    findings = filter_by_severity(findings, severity)
+
+    report_dir = _validate_report_dir(repo, cfg.output.report_dir)
+    if isinstance(report_dir, list):
+        return report_dir
+    written: list[Path] = []
+    for fmt in cfg.output.formats:
+        written.extend(render_report(fmt, repo, findings, results, report_dir=report_dir))
+
+    _LAST_RUN["report_dir"] = str(report_dir)
+    _LAST_RUN["findings"] = [f.to_dict() for f in findings]
+    _LAST_RUN["repo"] = str(repo)
+
+    summary = _audit_summary(
+        repo=repo,
+        findings=findings,
+        results=results,
+        reports=written,
+        dependency=dependency,
+        severity=severity,
+    )
+    return [TextContent(type="text", text=json.dumps(summary, indent=2, default=str))]
+
+
+def _handle_polycheck(arguments: dict) -> list:
+    """Run the guided workflow used by LLM coding assistants."""
+    repo = _repo_from_arguments(arguments)
+    if isinstance(repo, list):
+        return repo
+
+    run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    cfg = Config.load(repo)
+    severity = arguments.get("severity", "MEDIUM").upper()
+    install_mode = arguments.get("install_mode", "none")
+    if install_mode not in {"none", "tools_only"}:
+        return _text_content({"error": "install_mode must be none or tools_only"})
+    install_confirmed = bool(arguments.get("install_confirmed", False))
+
+    append_event(repo, run_id, {"event": "dependency_check_started"})
+    dependency = _dependency_check(repo, cfg, tools=arguments.get("tools"))
+    append_event(repo, run_id, {"event": "dependency_check_finished", **dependency})
+
+    if install_mode == "tools_only":
+        append_event(repo, run_id, {"event": "install_started", "install_confirmed": install_confirmed})
+        if install_confirmed:
+            install_results = _install_missing_tools(dependency["missing_tools"])
+        else:
+            install_results = []
+        append_event(repo, run_id, {"event": "install_finished", "results": install_results})
+        dependency = _dependency_check(repo, cfg, tools=arguments.get("tools"))
+    else:
+        install_results = []
+
+    append_event(repo, run_id, {"event": "scan_started", "severity": severity})
+    cfg.severity_threshold = severity
+    runner = Runner(repo=repo, config=cfg)
+    findings, results = runner.run(
+        parallel=bool(arguments.get("parallel", True)),
+        tools=arguments.get("tools"),
+    )
     findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
+    append_event(repo, run_id, {"event": "scan_finished", "total_findings": len(findings)})
 
-    out_dir = repo / cfg.output.report_dir
+    out_dir = _guided_report_dir(repo, cfg.output.report_dir, run_id)
+    if isinstance(out_dir, list):
+        return out_dir
     written: list[Path] = []
+
     for fmt in cfg.output.formats:
         written.extend(render_report(fmt, repo, findings, results, report_dir=out_dir))
 
     _LAST_RUN["report_dir"] = str(out_dir)
     _LAST_RUN["findings"] = [f.to_dict() for f in findings]
+    _LAST_RUN["repo"] = str(repo)
 
-    summary = {
-        "repo": str(repo),
-        "total_findings": len(findings),
-        "by_severity": {},
-        "tools_run": len(results),
-        "tools_failed": [r.tool for r in results if r.status in ("error", "timeout")],
-        "reports": [str(p) for p in written],
-        "next": "Read polycheck://triage/prompt and the markdown report.",
+    summary = _workflow_summary(
+        repo=repo,
+        findings=findings,
+        results=results,
+        reports=written,
+        dependency=dependency,
+        install_results=install_results,
+        install_requested=install_mode == "tools_only",
+        install_confirmed=install_confirmed,
+        severity=severity,
+        run_id=run_id,
+    )
+
+    session = write_session_summary(repo, summary)
+    summary["session"] = session
+    _LAST_RUN["latest_markdown"] = session["latest_markdown"]
+    _LAST_RUN["latest_json"] = session["latest_json"]
+
+    write_run_summary(repo, run_id, summary)
+    return [TextContent(type="text", text=json.dumps(summary, indent=2, default=str))]
+
+
+def _dependency_check(repo: Path, cfg: Config | None = None, tools: list[str] | None = None) -> dict:
+    missing_tools = _missing_tools_for_mcp(repo, cfg, only=tools)
+    missing_system = _missing_system_dependencies(repo, cfg, tools=tools)
+    return {
+        "missing_tools": [_missing_tool_to_dict(cls) for cls in missing_tools],
+        "missing_system_dependencies": missing_system,
     }
-    for f in findings:
-        summary["by_severity"][f.severity.name] = summary["by_severity"].get(f.severity.name, 0) + 1
-    return [TextContent(type="text", text=json.dumps(summary, indent=2))]
+
+
+def _missing_tools_for_mcp(repo: Path, cfg: Config | None = None, only: list[str] | None = None) -> list[type]:
+    from .cli import _missing_tools
+
+    return _missing_tools(repo, only=only, exclude=set(), config=cfg)
+
+
+def _missing_tool_to_dict(cls: type[Tool]) -> dict:
+    inst = cls()
+    return {
+        "name": inst.name,
+        "kind": "analyzer",
+        "install_hint": inst.install_hint(),
+        "auto_installable": inst.can_auto_install(),
+        "risk": "low",
+    }
+
+
+def _missing_system_dependencies(repo: Path, cfg: Config | None, tools: list[str] | None = None) -> list[dict]:
+    if tools is not None and "sonarless" not in tools:
+        return []
+    if not _tool_enabled_by_config("sonarless", cfg):
+        return []
+    docker = _check_docker()
+    if docker["status"] == _STATUS_INSTALLED:
+        return []
+    return [{
+        "name": "docker",
+        "kind": "system",
+        "needed_for": ["sonarless"],
+        "status": docker["status"],
+        "install_hint": (
+            "Docker is required for sonarless. Ask your LLM coding assistant "
+            "to help install Docker for this OS, then rerun /polycheck."
+        ),
+        "auto_installable": False,
+        "risk": "high",
+    }]
+
+
+def _tool_enabled_by_config(name: str, cfg: Config | None) -> bool:
+    if cfg and cfg.enable and name not in cfg.enable:
+        return False
+    if cfg and name in cfg.disable:
+        return False
+    return True
+
+
+def _install_missing_tools(missing_tools: list[dict]) -> list[dict]:
+    results = []
+    for item in missing_tools:
+        cls = default_registry.get(item["name"])
+        if cls is None:
+            results.append({"name": item["name"], "installed": False, "message": "unknown tool"})
+            continue
+        inst = cls()
+        ok, message = inst.install()
+        results.append({"name": item["name"], "installed": ok, "message": message})
+    return results
+
+
+def _audit_summary(
+    *,
+    repo: Path,
+    findings: list,
+    results: list,
+    reports: list[Path],
+    dependency: dict,
+    severity: str,
+) -> dict:
+    by_severity = {
+        severity_name: sum(1 for f in findings if f.severity.name == severity_name)
+        for severity_name in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+    }
+    by_tool = {
+        tool_name: sum(1 for f in findings if f.tool == tool_name)
+        for tool_name in sorted({f.tool for f in findings})
+    }
+    tools_run = [
+        {
+            "name": r.tool,
+            "status": r.status,
+            "finding_count": len(r.findings),
+            "duration_sec": round(r.duration_sec, 2),
+            "error": r.error,
+        }
+        for r in results
+    ]
+    return {
+        "schema_version": 1,
+        "status": "completed",
+        "next_action": "",
+        "repo": str(repo),
+        "severity": severity,
+        "total_findings": len(findings),
+        "by_severity": by_severity,
+        "by_tool": by_tool,
+        "tools_run": tools_run,
+        "tools_failed": [r.tool for r in results if r.status in ("error", "timeout")],
+        "missing_tools": dependency["missing_tools"],
+        "missing_system_dependencies": dependency["missing_system_dependencies"],
+        "reports": [str(p) for p in reports],
+        "resources": ["polycheck://findings/markdown", "polycheck://findings/json"],
+    }
+
+
+def _workflow_summary(
+    *,
+    repo: Path,
+    findings: list,
+    results: list,
+    reports: list[Path],
+    dependency: dict,
+    install_results: list[dict],
+    install_requested: bool,
+    install_confirmed: bool,
+    severity: str,
+    run_id: str,
+) -> dict:
+    by_severity = {
+        severity_name: sum(1 for f in findings if f.severity.name == severity_name)
+        for severity_name in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+    }
+    by_tool = {
+        tool_name: sum(1 for f in findings if f.tool == tool_name)
+        for tool_name in sorted({f.tool for f in findings})
+    }
+    tools_run = [
+        {
+            "name": r.tool,
+            "status": r.status,
+            "finding_count": len(r.findings),
+            "duration_sec": round(r.duration_sec, 2),
+            "error": r.error,
+        }
+        for r in results
+    ]
+    missing_tools = dependency["missing_tools"]
+    missing_system = dependency["missing_system_dependencies"]
+    next_action = _next_action(
+        findings=findings,
+        missing_tools=missing_tools,
+        missing_system=missing_system,
+        install_requested=install_requested,
+        install_confirmed=install_confirmed,
+        install_results=install_results,
+        severity=severity,
+    )
+    status = "needs_user_input" if next_action else "completed"
+
+    return {
+        "schema_version": 1,
+        "run_id": run_id,
+        "status": status,
+        "next_action": next_action,
+        "repo": str(repo),
+        "severity": severity,
+        "total_findings": len(findings),
+        "by_severity": by_severity,
+        "by_tool": by_tool,
+        "tools_run": tools_run,
+        "tools_skipped": missing_tools + missing_system,
+        "missing_tools": missing_tools,
+        "missing_system_dependencies": missing_system,
+        "install_requested": install_requested,
+        "install_confirmed": install_confirmed,
+        "install_results": install_results,
+        "tools_failed": [r.tool for r in results if r.status in ("error", "timeout")],
+        "reports": [str(p) for p in reports],
+        "resources": ["polycheck://findings/markdown", "polycheck://findings/json"],
+    }
+
+
+def _next_action(
+    *,
+    findings: list,
+    missing_tools: list[dict],
+    missing_system: list[dict],
+    install_requested: bool,
+    install_confirmed: bool,
+    install_results: list[dict],
+    severity: str,
+) -> str:
+    failed_installs = [r for r in install_results if not r.get("installed")]
+    if failed_installs:
+        names = ", ".join(r.get("name", "tool") for r in failed_installs)
+        return f"install failed for {names}; ask user to review the install message and rerun"
+    if missing_tools or missing_system:
+        if install_requested and not install_confirmed:
+            return "ask user to confirm analyzer tool installation before continuing"
+        if missing_system:
+            return "ask user whether to install analyzer tools, install system dependencies manually, or skip missing items and run with available tools"
+        return "ask user whether to install missing analyzer tools and rerun"
+    if any(f.fixable for f in findings):
+        return f"ask user whether to fix {severity}+ findings or skip fixes"
+    if findings:
+        return "no fixable findings; ask user whether to lower the severity threshold, install skipped tools, or end the workflow"
+    return ""
 
 
 def _handle_list_tools() -> list:
     rows = []
     for cls in default_registry.all():
+        inst = cls()
+        installed = inst.is_installed()
         rows.append({
             "name": cls.name,
             "category": cls.category.value,
             "languages": cls.languages,
             "universal": cls.universal,
+            "installed": installed,
+            "version": inst.version() if installed else None,
+            "install_hint": "" if installed else inst.install_hint(),
         })
     return [TextContent(type="text", text=json.dumps(rows, indent=2))]
 

@@ -295,7 +295,13 @@ def show_prompt(
 
 
 @app.command(name="doctor")
-def doctor() -> None:
+def doctor(
+    fail_on_missing: bool = typer.Option(
+        False,
+        "--fail-on-missing",
+        help="Exit non-zero if any bundled analyzer is missing. Default: exit 0.",
+    ),
+) -> None:
     """Check which bundled analyzers are installed and which are missing.
 
     For each missing tool, prints the install command. For each
@@ -323,10 +329,11 @@ def doctor() -> None:
     if missing:
         console.print(
             f"\n[yellow]{missing} tool(s) missing.[/yellow] "
-            f"Install them all with: [cyan]polycheck install --all[/cyan]"
+            f"Install them with: [cyan]polycheck install[/cyan]"
         )
-        raise typer.Exit(code=1)
-    console.print("\n[green]All bundled tools are installed.[/green]")
+        if fail_on_missing:
+            raise typer.Exit(code=1)
+    console.print("\n[green]Doctor complete.[/green]")
 
 
 @app.command(name="install")
@@ -434,10 +441,12 @@ def _missing_tools(
     *,
     only: list[str] | None,
     exclude: set[str],
+    config: Config | None = None,
 ) -> list[type]:
     """Tool classes that *would* be applicable to ``repo`` but whose
     binary is not on PATH. Excludes any name in ``exclude`` (typically
-    the set of tools that already ran)."""
+    the set of tools that already ran).
+    """
     langs = detect(repo)
     lang_slugs = {lang.slug for lang in langs}
     out: list[type] = []
@@ -446,18 +455,37 @@ def _missing_tools(
             continue
         if only and cls.name not in only:
             continue
-        if not cls.universal and lang_slugs and not any(
-            s in lang_slugs for s in cls.languages
-        ):
+        if not _tool_enabled(cls, config):
             continue
-        if cls.universal and not lang_slugs:
-            # A universal tool still won't run on a totally empty
-            # repo with no source. Skip it.
+        if not _language_matches(cls, lang_slugs):
             continue
         inst = cls()
         if not inst.is_installed():
+            if not _tool_applicable(cls, repo):
+                continue
             out.append(cls)
     return out
+
+
+def _tool_enabled(cls: type, config: Config | None) -> bool:
+    if config and config.enable and cls.name not in config.enable:
+        return False
+    if config and cls.name in config.disable:
+        return False
+    return True
+
+
+def _language_matches(cls: type, lang_slugs: set[str]) -> bool:
+    if cls.universal:
+        return bool(lang_slugs)
+    return bool(lang_slugs and any(slug in lang_slugs for slug in cls.languages))
+
+
+def _tool_applicable(cls: type, repo: Path) -> bool:
+    try:
+        return cls().is_applicable(repo)
+    except Exception:  # noqa: BLE001 — missing-tool checks should not crash
+        return True
 
 
 def _exit_code(findings: list, fail_on: str) -> int:

@@ -44,6 +44,7 @@ _TYPE_LABEL = {
 SONAR_PORT = 9234
 SONAR_USER = "admin"
 SONAR_PASS = "Son@rless123"
+SONARLESS_INSTALL_URL = "https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh"
 
 
 class SonarlessTool(Tool):
@@ -63,6 +64,47 @@ class SonarlessTool(Tool):
     def is_installed(self) -> bool:
         """Check if sonarless CLI is available."""
         return shutil.which("sonarless") is not None
+
+    def install_hint(self) -> str:
+        return f"curl -sSL {SONARLESS_INSTALL_URL} | bash"
+
+    def can_auto_install(self) -> bool:
+        return _docker_available() and shutil.which("curl") is not None
+
+    def install(self) -> tuple[bool, str]:
+        """Install sonarless when Docker is available."""
+        if self.is_installed():
+            return True, "sonarless is already installed"
+        if not _docker_available():
+            return False, (
+                "Docker is required for sonarless. Ask your LLM coding "
+                "assistant to help install Docker for this OS, then rerun polycheck."
+            )
+        if shutil.which("curl") is None:
+            return False, "curl is required to install sonarless"
+
+        cmd = f"curl -sSL {SONARLESS_INSTALL_URL} | bash"
+        try:
+            result = subprocess.run(
+                ["bash", "-lc", cmd],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            return False, "sonarless install timed out after 300s"
+        except OSError as e:
+            return False, f"sonarless install could not run: {e}"
+
+        if result.returncode != 0:
+            output = (result.stderr or result.stdout).strip()[:300]
+            return False, f"sonarless install failed: {output}"
+        if self.is_installed():
+            return True, "installed sonarless"
+        return False, (
+            "sonarless install finished, but sonarless was not found on PATH. "
+            "Add ~/.sonarless to PATH or create the wrapper script from the README."
+        )
 
     def run(self, repo: Path) -> list[Finding]:
         # 1. Run sonarless scan

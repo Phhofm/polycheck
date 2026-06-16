@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import json_reporter, markdown_reporter, sarif_reporter
 from ..finding import Finding
 from ..runner import ToolResult
+from . import json_reporter, markdown_reporter, sarif_reporter
 
 REPORTERS = {
     "json": json_reporter.render,

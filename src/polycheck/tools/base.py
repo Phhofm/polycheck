@@ -106,6 +106,10 @@ class Tool(abc.ABC):
             return f"download from https://github.com/{repo_path}/releases"
         return f"install {self.name} manually (no automatic installer available)"
 
+    def can_auto_install(self) -> bool:
+        """Return True if the base installer can install this tool."""
+        return build_install_command(self.installer, self.name) is not None
+
     def install(self) -> tuple[bool, str]:
         """Attempt to install the tool. Returns ``(success, message)``.
 
@@ -118,8 +122,7 @@ class Tool(abc.ABC):
         """
         if self.is_installed():
             return True, f"{self.name} is already installed"
-        cmd = build_install_command(self.installer, self.name)
-        if cmd is None:
+        if not self.can_auto_install():
             # Check if this is a github: installer to give better message
             if self.installer and self.installer.startswith("github:"):
                 repo_path = self.installer[len("github:"):]
@@ -128,6 +131,7 @@ class Tool(abc.ABC):
                     f"download from https://github.com/{repo_path}/releases"
                 )
             return False, f"no automatic installer for {self.name}; see {self.install_hint()}"
+        cmd = build_install_command(self.installer, self.name)
         # Check if required package manager is available
         if not self._check_package_manager(cmd):
             return False, f"required package manager not found for {self.name}"

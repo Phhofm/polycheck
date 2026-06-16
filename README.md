@@ -7,20 +7,30 @@
 > never has to read source code it doesn't need to.
 
 > **Self-audit:** `polycheck run .` on this repo's source tree returns
-> **0 findings at MEDIUM+ severity** across all 8 bundled analyzers
-> (including SonarQube via sonarless). Last verified: 0.1.0.
+> **0 findings at MEDIUM+ severity** across the bundled analyzers that are
+> installed and applicable, including optional SonarQube via sonarless when
+> Docker and the `sonarless` binary are available. Last verified: 0.1.0.
 
 ---
 
-## Quick Start: Use in Claude Code / Kilo Code / OpenCode (Recommended)
+## Quick Start: One Command for LLM Coding Assistants
 
-The easiest way to use polycheck. Add it as an MCP tool and your LLM
-will guide you through the entire workflow — checking dependencies,
-running the scan, presenting findings, and fixing issues interactively.
+polycheck is designed for Claude Code, Kilo Code, OpenCode, and other
+LLM coding tools. Install it once, enable the MCP server, then run:
 
-- [Claude Code](https://claude.com/product/claude-code) — Anthropic's AI coding assistant
-- [Kilo Code](https://kilo.ai/) — VSCode extension for AI-assisted development
-- [OpenCode](https://opencode.ai/) — Open-source AI coding assistant
+```text
+/polycheck
+```
+
+or:
+
+```text
+run polycheck
+```
+
+The LLM calls one guided MCP workflow. polycheck checks dependencies,
+reports missing tools, runs local analyzers, writes reports, summarizes
+findings, and asks before installing tools or applying fixes.
 
 ### Step 1: Install polycheck
 
@@ -86,40 +96,40 @@ pipx install "git+https://github.com/Phhofm/polycheck.git"
 }
 ```
 
-### Step 3: Ask your LLM
+### Step 3: Run the guided workflow
 
 In your project, type:
 
+```text
+/polycheck
 ```
+
+or:
+
+```text
 run polycheck
 ```
 
-or
+What happens:
 
-```
-check my code for bugs using polycheck
-```
+1. polycheck checks which analyzers and system dependencies are available.
+2. If tools are missing, the LLM asks whether to install them.
+3. polycheck runs the installed applicable analyzers.
+4. Reports are written to `polycheck-reports/`.
+5. The LLM shows a compact summary grouped by tool and severity.
+6. If fixable findings exist, the LLM asks before applying fixes.
+7. After fixes, the LLM can rerun polycheck to verify the result.
 
-### What Happens
+Session summaries are written under `.polycheck/` so future LLM sessions
+can reference what was checked, skipped, fixed, or deferred.
 
-The LLM will:
-
-1. **Check dependencies** — runs `polycheck.doctor` to see what's installed
-2. **Install missing tools** — asks if you want to install missing analyzers
-3. **Run the full scan** — runs `polycheck.audit_run` on your repo
-4. **Present findings** — grouped by severity, color-coded:
-   - CRITICAL/HIGH first (urgent — likely real bugs)
-   - MEDIUM next (real smells, worth fixing)
-   - LOW/INFO only if you ask
-5. **Tell you what found each issue** — ruff, mypy, sonarless, gitleaks, etc.
-6. **Ask before fixing** — "Should I fix the HIGH/CRITICAL issues?"
-7. **Apply fixes** — only after your approval
-8. **Summarize** — what was fixed, what was deferred, what was false positive
-
-**Docker installed?** polycheck will automatically use
-[sonarless](https://github.com/gitricko/sonarless) for SonarQube
-analysis — bugs, vulnerabilities, and code smells across 30+ languages.
-If Docker isn't available, it skips silently with a hint to install it.
+**Docker / SonarQube:** SonarQube analysis through sonarless requires
+both Docker running and the `sonarless` binary installed. polycheck keeps
+sonarless enabled by default when those are available. If Docker is
+missing, polycheck reports it as a skipped system dependency and suggests
+asking your LLM coding assistant for OS-specific Docker setup help. If
+Docker is available but sonarless is missing, the guided MCP workflow
+offers to install sonarless before rerunning the scan.
 
 ---
 
@@ -135,7 +145,8 @@ polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
 polycheck run . --install                  # install missing tools, then run
 polycheck run . --parallel                 # run tools concurrently
 polycheck run . --output markdown          # markdown only (no JSON / sarif)
-polycheck doctor                           # show installed/missing tools
+polycheck doctor                           # show installed/missing tools, exit 0 by default
+polycheck doctor --fail-on-missing         # exit 1 when tools are missing
 polycheck install                          # install every missing tool
 polycheck install ruff mypy                # install specific tools
 polycheck list-tools                       # list every available analyzer
@@ -148,7 +159,8 @@ polycheck mcp                              # start the MCP server
 
 ### The Triage Prompt
 
-After `polycheck run`, paste the triage prompt + report into your LLM:
+The guided MCP workflow handles triage automatically. If you run the CLI
+manually, you can still print the prompt and pair it with a report:
 
 ```bash
 polycheck prompt --plain    # prints just the prompt
@@ -161,22 +173,30 @@ as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
 
 ## MCP Server Reference
 
-polycheck ships an MCP server with **5 tools** and **3 resources**.
+polycheck ships an MCP server with one primary workflow tool and several
+advanced/low-level tools.
 
-### Tools
+### Primary tool
 
 | Tool | Description |
 |------|-------------|
-| `polycheck.audit_run` | Run the full pipeline on a repo. Returns report paths + summary. |
-| `polycheck.list_tools` | List every analyzer and its status. |
-| `polycheck.explain_finding` | Explain a category (CVE, SECURITY, LINT, etc.) and how to triage. |
-| `polycheck.doctor` | Check Docker, sonarless, and all analyzers. Shows what's installed vs missing. |
+| `polycheck` | Run the guided workflow: dependency check, optional install approval, scan, reports, compact summary, and next action. |
+
+### Advanced tools
+
+| Tool | Description |
+|------|-------------|
+| `polycheck.audit_run` | Run the low-level scan primitive on a repo. Returns report paths, dependency context, and summary. |
+| `polycheck.list_tools` | List every analyzer polycheck knows about and whether it is installed. |
+| `polycheck.explain_finding` | Explain a category (CVE, SECURITY, LINT, etc.) and how to triage it. |
+| `polycheck.doctor` | Check Docker, sonarless, and all analyzers. Non-fatal by default. |
 | `polycheck.install` | Install missing tools (all or specific ones). |
 
 ### Resources
 
 | Resource | Description |
 |----------|-------------|
+| `polycheck://session/latest` | Latest guided workflow summary. |
 | `polycheck://triage/prompt` | The interactive LLM triage prompt. |
 | `polycheck://findings/markdown` | Last run's markdown report. |
 | `polycheck://findings/json` | Last run's JSON report. |
@@ -230,7 +250,8 @@ extra_args:             # per-tool extra CLI args
   eslint: ["--max-warnings", "0"]
 ```
 
-**sonarless** is enabled by default when Docker is available. Disable it with:
+**sonarless** is enabled by default when Docker is running and the
+`sonarless` binary is installed. Disable it with:
 
 ```yaml
 disable:
@@ -307,7 +328,8 @@ and queries the SonarQube API for per-file issues. It covers 30+
 languages for bugs, vulnerabilities, code smells, and security hotspots.
 
 - Requires **Docker** installed and running
-- Install: `curl -s https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash`
+- Install when Docker is available: `curl -sSL https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash`
+- The guided MCP workflow offers to install sonarless automatically when Docker is available.
 - Web UI: `http://localhost:9234` (admin/Son@rless123)
 - Clean up: `sonarless docker-clean`
 
