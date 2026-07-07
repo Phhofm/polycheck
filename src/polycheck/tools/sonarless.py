@@ -9,6 +9,7 @@ Requires Docker to be installed. Skips silently if Docker is absent.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -101,6 +102,25 @@ class SonarlessTool(Tool):
             return False, f"sonarless install failed: {output}"
         if self.is_installed():
             return True, "installed sonarless"
+        local_install = Path.home() / ".sonarless" / "sonarless"
+        if not local_install.exists():
+            local_install = Path.home() / ".sonarless" / "makefile.sh"
+        if local_install.exists():
+            target_dir = _writable_install_dir()
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / "sonarless"
+            if local_install.name == "makefile.sh":
+                target.write_text(
+                    "#!/usr/bin/env bash\n"
+                    f"exec bash {local_install} \"$@\"\n",
+                    encoding="utf-8",
+                )
+                target.chmod(0o755)
+            else:
+                shutil.copy2(local_install, target)
+                target.chmod(0o755)
+            if self.is_installed():
+                return True, f"installed sonarless to {target}"
         return False, (
             "sonarless install finished, but sonarless was not found on PATH. "
             "Add ~/.sonarless to PATH or create the wrapper script from the README."
@@ -203,3 +223,16 @@ def _docker_available() -> bool:
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
+
+
+def _writable_install_dir() -> Path:
+    """Return a writable directory that is likely on PATH."""
+    candidates = [str(Path.home() / ".local" / "bin")]
+    candidates.extend(str(Path(os.environ.get("PATH", ""))).split(os.pathsep))
+    for raw in candidates:
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.exists() and os.access(path, os.W_OK):
+            return path
+    return Path.home() / ".local" / "bin"

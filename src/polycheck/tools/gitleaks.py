@@ -20,7 +20,7 @@ class GitleaksTool(Tool):
     category = Category.SECRETS
     languages = []            # applies to any git repo
     universal = True
-    installer = "github:gitleaks/gitleaks"
+    installer = "github-release:gitleaks/gitleaks"
 
     def is_applicable(self, repo: Path) -> bool:
         return (repo / ".git").exists() or (repo / ".git").is_dir()

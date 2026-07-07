@@ -13,25 +13,10 @@
 
 ---
 
-## Quick Start: One Command for LLM Coding Assistants
+## Quick Start: Use `/polycheck` in Kilo Code, OpenCode, Claude Code, and other MCP tools
 
-polycheck is designed for Claude Code, Kilo Code, OpenCode, and other
-LLM coding tools. Install it once, enable the MCP server, then run:
-
-```text
-/polycheck
-```
-
-or:
-
-```text
-run polycheck
-```
-
-The LLM calls one guided MCP workflow tool, `polycheck.run`. polycheck
-checks dependencies, reports missing tools, runs local analyzers, writes
-reports, summarizes findings, and asks before installing tools or applying
-fixes.
+polycheck is designed for LLM coding assistants. Install it once, initialize
+your assistant integration, then run `/polycheck` in any repository.
 
 ### Step 1: Install polycheck
 
@@ -41,9 +26,91 @@ pipx install polycheck
 pipx install "git+https://github.com/Phhofm/polycheck.git"
 ```
 
-### Step 2: Add MCP config
+### Step 2: Initialize `/polycheck`
 
-**Claude Code** — add to `~/.claude/settings.json` or project `.claude/settings.json`:
+For one setup across all your projects, use global workflow/config files:
+
+```bash
+polycheck init --host all --scope global
+```
+
+Preview first:
+
+```bash
+polycheck init --host all --scope global --dry-run
+```
+
+For a single repository only, use project-local files:
+
+```bash
+polycheck init --host all --scope project
+```
+
+The initializer writes slash-command workflow files and, where safe, MCP
+config:
+
+| Host | Project files | Global files |
+| --- | --- | --- |
+| Kilo Code | `.kilo/commands/polycheck.md` and `kilo.jsonc` | `~/.config/kilo/commands/polycheck.md` and `~/.config/kilo/kilo.jsonc` |
+| OpenCode | `.opencode/commands/polycheck.md` and `opencode.jsonc` | `~/.config/opencode/commands/polycheck.md` and `~/.config/opencode/opencode.jsonc` |
+| Claude Code | `.claude/skills/polycheck/SKILL.md` and `.mcp.json` | `~/.claude/skills/polycheck/SKILL.md` and `~/.claude.json` |
+
+Useful options:
+
+```bash
+polycheck init --host kilo,opencode --scope global --yes
+polycheck init --host claude --scope project --force
+polycheck init --host all --scope global --no-mcp
+polycheck init --host all --scope global --mcp-only
+```
+
+### Step 3: Restart your LLM coding assistant
+
+Restart Kilo Code, OpenCode, Claude Code, or your MCP-compatible tool so it
+reloads MCP servers and slash-command files.
+
+### Step 4: Run the guided workflow
+
+In any project, type:
+
+```text
+/polycheck
+```
+
+or ask your assistant to:
+
+```text
+run polycheck
+```
+
+What happens:
+
+1. The workflow calls the MCP tool `polycheck.run` against the current repo.
+2. polycheck checks which analyzers and system dependencies are available.
+3. If tools are missing, the LLM asks whether to install them.
+4. polycheck runs the installed applicable analyzers.
+5. Reports are written to `polycheck-reports/`.
+6. The LLM shows a compact summary grouped by tool and severity.
+7. If fixable findings exist, the LLM asks before applying fixes.
+8. After fixes, the LLM reruns `polycheck.run` to verify the result.
+
+If the MCP tool is unavailable, the generated workflow falls back to:
+
+```bash
+polycheck run . --severity MEDIUM
+```
+
+and then asks the LLM to triage the generated markdown and JSON reports.
+
+Session summaries are written under `.polycheck/` so future LLM sessions
+can reference what was checked, skipped, fixed, or deferred.
+
+### Manual MCP setup
+
+If you prefer not to use `polycheck init`, configure the MCP server manually.
+
+**Claude Code** — add to project `.mcp.json`, `~/.claude/settings.json`, or
+your Claude user MCP config:
 
 ```json
 {
@@ -56,7 +123,8 @@ pipx install "git+https://github.com/Phhofm/polycheck.git"
 }
 ```
 
-**Kilo Code (VSCode Extension)** — add to `kilo.jsonc` in your project root or `~/.config/kilo/kilo.jsonc`:
+**Kilo Code (VSCode Extension)** — add to `kilo.jsonc` in your project root
+or `~/.config/kilo/kilo.jsonc`:
 
 ```json
 {
@@ -70,7 +138,8 @@ pipx install "git+https://github.com/Phhofm/polycheck.git"
 }
 ```
 
-**OpenCode** — add to `opencode.jsonc` in your project root:
+**OpenCode** — add to `opencode.jsonc` in your project root or
+`~/.config/opencode/opencode.jsonc`:
 
 ```json
 {
@@ -97,33 +166,6 @@ pipx install "git+https://github.com/Phhofm/polycheck.git"
 }
 ```
 
-### Step 3: Run the guided workflow
-
-In your project, type:
-
-```text
-/polycheck
-```
-
-or:
-
-```text
-run polycheck
-```
-
-What happens:
-
-1. polycheck checks which analyzers and system dependencies are available.
-2. If tools are missing, the LLM asks whether to install them.
-3. polycheck runs the installed applicable analyzers.
-4. Reports are written to `polycheck-reports/`.
-5. The LLM shows a compact summary grouped by tool and severity.
-6. If fixable findings exist, the LLM asks before applying fixes.
-7. After fixes, the LLM can rerun `polycheck.run` to verify the result.
-
-Session summaries are written under `.polycheck/` so future LLM sessions
-can reference what was checked, skipped, fixed, or deferred.
-
 **Docker / SonarQube:** SonarQube analysis through sonarless requires
 both Docker running and the `sonarless` binary installed. polycheck keeps
 sonarless enabled by default when those are available. If Docker is
@@ -146,17 +188,77 @@ polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
 polycheck run . --install                  # install missing tools, then run
 polycheck run . --parallel                 # run tools concurrently
 polycheck run . --output markdown          # markdown only (no JSON / sarif)
+polycheck init --host all --scope global   # initialize /polycheck workflows
+polycheck init --dry-run --host all        # preview initialization
 polycheck doctor                           # show installed/missing tools, exit 0 by default
 polycheck doctor --fail-on-missing         # exit 1 when tools are missing
 polycheck install                          # install every missing tool
 polycheck install ruff mypy                # install specific tools
 polycheck list-tools                       # list every available analyzer
+polycheck verify-tools                     # verify supported analyzers on synthetic repos
+polycheck verify-tools --install --yes     # install missing auto-installable tools, then verify
+polycheck verify-tools --include-heavy     # include Docker/network-heavy tools
 polycheck prompt --plain                   # print the triage prompt
 polycheck mcp                              # start the MCP server
 ```
 
 `polycheck run` exits with code **1** if any finding is at or above
 `--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` in CI.
+
+### Verifying every supported analyzer
+
+Use `polycheck verify-tools` when changing analyzer wrappers or installer
+logic. It creates synthetic repositories and verifies every registered tool:
+
+```bash
+polycheck verify-tools
+```
+
+Installed tools are run. Missing tools are reported as skipped. To attempt
+automatic installation for installable tools first:
+
+```bash
+polycheck verify-tools --install --yes
+```
+
+Docker/network-heavy tools are skipped by default because they can start
+Docker or reach package registries. Include them explicitly when that is
+acceptable:
+
+```bash
+polycheck verify-tools --include-heavy
+```
+
+For a full install-and-run verification of every supported analyzer, use:
+
+```bash
+polycheck verify-tools --install --yes --include-heavy
+```
+
+The heavy set currently includes `sonarless`, `semgrep`, `pip-audit`, and
+`npm-audit`:
+
+- `sonarless` requires Docker and the `sonarless` binary. Its installer is
+  Docker-aware and only runs when Docker is available.
+- `sonarless` requires Docker and the `sonarless` binary. Its installer is
+  Docker-aware and only runs when Docker is available.
+- `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are installed from
+  GitHub releases when polycheck can infer the correct OS/architecture asset.
+  Unsupported OS/architecture combinations are reported instead of guessed.
+- `semgrep` may download rules when using `--config=auto`.
+- `pip-audit` queries PyPI to audit Python dependencies.
+- `npm-audit` queries the npm registry to audit Node dependencies.
+
+To verify every supported tool in the pytest suite, run the heavy marker:
+
+```bash
+pytest -m heavy
+```
+
+The default `pytest` run includes the heavy smoke test only when the tools are
+already installed or can be skipped safely; use `polycheck verify-tools
+--install --yes --include-heavy` when you explicitly want install-and-run
+coverage for every supported analyzer.
 
 ### The Triage Prompt
 

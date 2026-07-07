@@ -89,3 +89,6 @@ warn_unused_ignores = true
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 pythonpath = ["src"]
+markers = [
+    "heavy: tests that require Docker, network access, or expensive analyzers",
+]

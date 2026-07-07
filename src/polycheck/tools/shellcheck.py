@@ -24,7 +24,7 @@ class ShellcheckTool(Tool):
     name = "shellcheck"
     category = Category.LINT
     languages = ["shell"]
-    installer = "apt:shellcheck"
+    installer = "github-release:koalaman/shellcheck"
 
     def is_applicable(self, repo: Path) -> bool:
         return any(repo.glob("**/*.sh")) or any(repo.glob("**/bin/*"))

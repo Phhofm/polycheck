@@ -12,6 +12,9 @@ Subcommands
 ``polycheck explain RULE``
     Print a short explanation of a tool/rule identifier.
 
+``polycheck init``
+    Initialize `/polycheck` for Kilo Code, OpenCode, and Claude Code.
+
 ``polycheck mcp``
     Start the MCP server (stdio transport).
 """
@@ -27,9 +30,17 @@ from rich.table import Table
 from . import __version__
 from .config import Config
 from .detect import detect
+from .initializer import (
+    HOSTS,
+    apply_plan,
+    build_plan,
+    format_action,
+    normalize_hosts,
+)
 from .registry import default_registry
 from .reporters import render as render_report
 from .runner import Runner, dedupe, filter_by_severity
+from .verify import HEAVY_TOOLS, verify_tools
 
 # Auto-discover all bundled tools on import so the CLI is ready to go.
 default_registry.discover()
@@ -223,6 +234,100 @@ def list_tools() -> None:
     console.print(table)
 
 
+@app.command(name="verify-tools")
+def verify_tools_cmd(
+    tool: list[str] | None = typer.Option(
+        None,
+        "--tool",
+        "-t",
+        help="Restrict verification to specific tool name(s) (repeatable)",
+    ),
+    install_missing: bool = typer.Option(
+        False,
+        "--install",
+        help="Attempt automatic installation for missing installable tools before running them.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "-y",
+        "--yes",
+        help="Skip confirmation when --install is used.",
+    ),
+    include_heavy: bool = typer.Option(
+        False,
+        "--include-heavy",
+        help="Run Docker/network-heavy tools such as sonarless, semgrep, pip-audit, and npm-audit.",
+    ),
+) -> None:
+    """Verify every supported analyzer can install and run.
+
+    By default this checks installed tools against synthetic repositories and
+    skips missing tools. Use --install to attempt automatic installs, and
+    --include-heavy only when Docker/network access are acceptable.
+    """
+    selected = list(tool or [])
+    known = {cls.name for cls in default_registry.all()}
+    unknown = [name for name in selected if name not in known]
+    if unknown:
+        console.print(f"[red]Unknown tool(s): {', '.join(unknown)}[/red]")
+        raise typer.Exit(2)
+
+    if install_missing and not yes:
+        missing = [
+            cls for cls in default_registry.all()
+            if (not selected or cls.name in selected)
+            and not cls().is_installed()
+            and cls().can_auto_install()
+        ]
+        if missing:
+            console.print("Will attempt to install missing tools:")
+            for cls in missing:
+                console.print(f"  [cyan]{cls.name}[/cyan]: {cls().install_hint()}")
+            if not typer.confirm("Proceed?"):
+                raise typer.Abort()
+
+    results = verify_tools(
+        default_registry,
+        install=install_missing,
+        include_heavy=include_heavy,
+        tools=selected,
+    )
+
+    table = Table(title="polycheck verify-tools")
+    table.add_column("Tool", style="cyan")
+    table.add_column("Status")
+    table.add_column("Installed")
+    table.add_column("Applicable")
+    table.add_column("Findings", justify="right")
+    table.add_column("Time (s)", justify="right")
+    table.add_column("Message")
+    for result in results:
+        table.add_row(
+            result.tool,
+            result.status,
+            "yes" if result.installed else "no",
+            "yes" if result.applicable else "no",
+            str(result.findings),
+            f"{result.duration_sec:.1f}",
+            result.message,
+        )
+    console.print(table)
+
+    failed = [r for r in results if r.status in {"error", "timeout", "install-failed"}]
+    if failed:
+        console.print(
+            "[red]Verification failed:[/red] "
+            + ", ".join(f"{r.tool} ({r.status})" for r in failed)
+        )
+        raise typer.Exit(1)
+
+    heavy = ", ".join(sorted(HEAVY_TOOLS))
+    console.print(
+        "[green]Verification complete.[/green] "
+        f"Heavy tools skipped by default: {heavy}. Use --include-heavy to run them."
+    )
+
+
 @app.command()
 def explain(
     tool: str = typer.Argument(..., help="Tool name (e.g. ruff)"),
@@ -254,6 +359,97 @@ def mcp() -> None:
     """Start the polycheck MCP server (stdio transport)."""
     from .mcp_server import run_server
     run_server()
+
+
+@app.command(name="init")
+def init_cmd(
+    host: list[str] | None = typer.Option(
+        None,
+        "--host",
+        "-H",
+        help=f"Host(s) to configure: {', '.join((*HOSTS, 'all'))}. Repeatable; default: all.",
+    ),
+    scope: str = typer.Option(
+        "global",
+        "--scope",
+        help="Write project-local or global workflow/config files.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print what would be written without modifying files.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "-y",
+        "--yes",
+        help="Write files without an interactive confirmation prompt.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing workflow files. MCP config is merged when valid JSON.",
+    ),
+    no_mcp: bool = typer.Option(
+        False,
+        "--no-mcp",
+        help="Write slash-command workflow files only.",
+    ),
+    mcp_only: bool = typer.Option(
+        False,
+        "--mcp-only",
+        help="Write MCP config only; do not write slash-command workflow files.",
+    ),
+) -> None:
+    """Initialize /polycheck for Kilo Code, OpenCode, and Claude Code."""
+    selected_scope = scope.lower()
+    if selected_scope not in {"global", "project"}:
+        console.print("[red]Invalid scope. Use --scope global or --scope project.[/red]")
+        raise typer.Exit(2)
+    if no_mcp and mcp_only:
+        console.print("[red]Use either --no-mcp or --mcp-only, not both.[/red]")
+        raise typer.Exit(2)
+
+    try:
+        selected_hosts = normalize_hosts(host)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+    project_root = Path.cwd().resolve()
+    home = Path.home().resolve()
+    plan = build_plan(
+        hosts=selected_hosts,
+        scope=selected_scope,
+        project_root=project_root,
+        home=home,
+        include_workflows=not mcp_only,
+        include_mcp=not no_mcp,
+    )
+
+    console.print(f"[bold]polycheck init[/bold] — {selected_scope} scope")
+    for action in plan:
+        console.print(format_action(action))
+
+    if dry_run:
+        console.print("\nDry run complete; no files were changed.")
+        return
+
+    if not yes and not typer.confirm("Write these files?"):
+        raise typer.Abort()
+
+    results = apply_plan(plan, force=force, dry_run=False)
+    for action in results:
+        console.print(format_action(action))
+
+    _print_init_next_steps(selected_hosts, selected_scope)
+
+
+def _print_init_next_steps(hosts: list[str], scope: str) -> None:
+    """Print concise next steps after initialization."""
+    console.print("\nNext steps:")
+    console.print("  1. Restart your LLM coding assistant so it reloads commands and MCP servers.")
+    console.print("  2. Run `/polycheck` in any project.")
 
 
 @app.command()

@@ -26,7 +26,7 @@ class ActionlintTool(Tool):
     category = Category.LINT
     languages = []   # applies to GH Actions
     universal = False
-    installer = "github:rhysd/actionlint"
+    installer = "github-release:rhysd/actionlint"
 
     def is_applicable(self, repo: Path) -> bool:
         wf = repo / ".github" / "workflows"
