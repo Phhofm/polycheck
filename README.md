@@ -28,8 +28,9 @@ your assistant integration, then run `/polycheck` in any repository.
 ### Step 1: Install polycheck
 
 ```bash
+pipx install polycheck
+# Or from source:
 pipx install "git+https://github.com/Phhofm/polycheck.git"
-# Once published on PyPI: pipx install polycheck
 ```
 
 ### Step 2: Initialize `/polycheck`
