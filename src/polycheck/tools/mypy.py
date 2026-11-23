@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, iter_source_files
 
 # mypy's "file:line[:col]: severity: message" line. The optional error
 # code in brackets is parsed separately. The column is optional because
@@ -37,8 +37,13 @@ class MypyTool(Tool):
         return (repo / "pyproject.toml").exists() or any(repo.glob("**/*.py"))
 
     def run(self, repo: Path) -> list[Finding]:
-        cmd = ["mypy", "--no-error-summary", "--show-column", "."]
-        # Allow mypy itself to be missing (linter venvs may not have it).
+        # Explicit project file list: mypy on "." would also walk
+        # .venv/site-packages copies under the repo and type-check
+        # other people's code.
+        files = [str(p) for p in iter_source_files(repo, ("*.py",))]
+        if not files:
+            return []
+        cmd = ["mypy", "--no-error-summary", "--show-column", *files]
         if shutil.which("mypy") is None:
             return []
         out = subprocess.run(

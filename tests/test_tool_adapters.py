@@ -25,6 +25,7 @@ from polycheck.tools.shellcheck import ShellcheckTool
 
 
 def test_eslint_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path):
+    (tmp_path / "app.js").write_text("const x = 1;\n")
     monkeypatch.setattr(
         "polycheck.tools.eslint.shutil.which",
         lambda name: "/usr/local/bin/eslint" if name == "eslint" else None,
@@ -39,10 +40,11 @@ def test_eslint_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path):
 
     EslintTool().run(tmp_path)
 
-    assert captured["cmd"] == ["eslint", "--format=json", "--no-warn-ignored", "."]
+    assert captured["cmd"] == ["eslint", "--format=json", "--no-warn-ignored", "app.js"]
 
 
 def test_eslint_falls_back_to_npx_with_eslint_arg(monkeypatch, tmp_path: Path):
+    (tmp_path / "app.js").write_text("const x = 1;\n")
     monkeypatch.setattr(
         "polycheck.tools.eslint.shutil.which",
         lambda name: "/usr/local/bin/npx" if name == "npx" else None,
@@ -58,7 +60,7 @@ def test_eslint_falls_back_to_npx_with_eslint_arg(monkeypatch, tmp_path: Path):
     EslintTool().run(tmp_path)
 
     assert captured["cmd"] == [
-        "npx", "eslint", "--format=json", "--no-warn-ignored", ".",
+        "npx", "eslint", "--format=json", "--no-warn-ignored", "app.js",
     ]
 
 
@@ -200,6 +202,7 @@ def test_ruff_severity_mapping_ranks_bugs_above_style(monkeypatch, tmp_path: Pat
 def test_mypy_parses_show_column_output(monkeypatch, tmp_path: Path):
     from polycheck.tools.mypy import MypyTool
 
+    (tmp_path / "app.py").write_text("x: int = 'bad'\n")
     monkeypatch.setattr(
         "polycheck.tools.mypy.shutil.which",
         lambda name: "/usr/local/bin/mypy" if name == "mypy" else None,
@@ -254,6 +257,7 @@ def test_vulture_parses_output_despite_finding_count_exit_code(
 ):
     from polycheck.tools.vulture import VultureTool
 
+    (tmp_path / "app.py").write_text("import os\n")
     monkeypatch.setattr(
         "polycheck.tools.vulture.shutil.which",
         lambda name: "/usr/local/bin/vulture" if name == "vulture" else None,
@@ -438,3 +442,142 @@ def test_deptry_parses_file_level_findings(monkeypatch, tmp_path: Path):
     assert f.file == "pyproject.toml"
     assert f.line is None
     assert "requests" in f.message
+
+
+# --- vendored/build dirs must never be scanned (false-positive source) ---
+
+
+def _seed_noisy_repo(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("import os\n")
+    (tmp_path / "app.js").write_text("const x = 1;\n")
+    (tmp_path / "script.sh").write_text("echo hi\n")
+    (tmp_path / "Dockerfile").write_text("FROM ubuntu\n")
+    venv = tmp_path / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "vendored.py").write_text("x = 1\n")
+    (venv / "vendored.js").write_text("var x = 1;\n")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "Dockerfile").write_text("FROM node\n")
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "bundle.js").write_text("var y = 2;\n")
+
+
+def test_iter_source_files_skips_vendored_dirs(tmp_path: Path):
+    from polycheck.tools.base import iter_source_files
+
+    _seed_noisy_repo(tmp_path)
+
+    rel = [p.as_posix() for p in iter_source_files(tmp_path, ("*.py", "*.js"))]
+
+    assert "app.py" in rel
+    assert "app.js" in rel
+    assert not any(".venv" in p for p in rel)
+    assert not any("node_modules" in p for p in rel)
+    assert not any("dist/" in p for p in rel)
+
+
+def test_mypy_scans_only_project_files(tmp_path: Path, monkeypatch):
+    from polycheck.tools.mypy import MypyTool
+
+    _seed_noisy_repo(tmp_path)
+    monkeypatch.setattr(
+        "polycheck.tools.mypy.shutil.which",
+        lambda name: "/usr/local/bin/mypy" if name == "mypy" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.mypy.subprocess.run", fake_run)
+
+    MypyTool().run(tmp_path)
+
+    py_args = [a for a in captured["cmd"] if a.endswith(".py")]
+    assert py_args == ["app.py"]
+    assert not any(".venv" in a for a in captured["cmd"])
+
+
+def test_eslint_scans_only_project_files(tmp_path: Path, monkeypatch):
+    _seed_noisy_repo(tmp_path)
+    monkeypatch.setattr(
+        "polycheck.tools.eslint.shutil.which",
+        lambda name: "/usr/local/bin/eslint" if name == "eslint" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.eslint.subprocess.run", fake_run)
+
+    EslintTool().run(tmp_path)
+
+    targets = [a for a in captured["cmd"][3:]]
+    assert targets == ["app.js"]
+    assert not any(".venv" in a or "dist" in a for a in captured["cmd"])
+
+
+def test_shellcheck_skips_vendored_scripts(tmp_path: Path, monkeypatch):
+    _seed_noisy_repo(tmp_path)
+    monkeypatch.setattr(
+        "polycheck.tools.shellcheck.shutil.which",
+        lambda name: "/usr/bin/shellcheck" if name == "shellcheck" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.shellcheck.subprocess.run", fake_run)
+
+    ShellcheckTool().run(tmp_path)
+
+    assert captured["cmd"][4:] == ["script.sh"]
+
+
+def test_hadolint_skips_dockerfiles_in_node_modules(tmp_path: Path, monkeypatch):
+    from polycheck.tools.hadolint import HadolintTool
+
+    _seed_noisy_repo(tmp_path)
+    monkeypatch.setattr(
+        "polycheck.tools.hadolint.shutil.which",
+        lambda name: "/usr/local/bin/hadolint" if name == "hadolint" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.hadolint.subprocess.run", fake_run)
+
+    HadolintTool().run(tmp_path)
+
+    assert captured["cmd"][4:] == ["Dockerfile"]
+
+
+def test_vulture_scans_only_project_files(tmp_path: Path, monkeypatch):
+    from polycheck.tools.vulture import VultureTool
+
+    _seed_noisy_repo(tmp_path)
+    monkeypatch.setattr(
+        "polycheck.tools.vulture.shutil.which",
+        lambda name: "/usr/local/bin/vulture" if name == "vulture" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.vulture.subprocess.run", fake_run)
+
+    VultureTool().run(tmp_path)
+
+    py_args = [a for a in captured["cmd"] if a.endswith(".py")]
+    assert py_args == ["app.py"]

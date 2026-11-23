@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, iter_source_files
 
 _HADOLINT_LINE = re.compile(
     r"^(?P<file>[^:]+):(?P<line>\d+)\s*"
@@ -33,9 +33,14 @@ class HadolintTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("hadolint") is None:
             return []
-        # Collect all Dockerfiles; hadolint takes files, not dirs.
-        dockerfiles = list(repo.glob("**/Dockerfile*")) + [repo / "Dockerfile"]
-        paths = [str(p) for p in dockerfiles if p.is_file()]
+        # Collect project Dockerfiles only; hadolint takes files, not
+        # dirs, and node_modules packages ship their own Dockerfiles.
+        paths = [
+            str(p)
+            for p in iter_source_files(
+                repo, ("Dockerfile*", "*.dockerfile")
+            )
+        ]
         if not paths:
             return []
         cmd = ["hadolint", "--no-fail", "--format", "gnu"] + paths

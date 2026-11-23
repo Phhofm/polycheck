@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, iter_source_files
 
 _SHELLCHECK_LINE = re.compile(
     r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*"
@@ -33,12 +33,10 @@ class ShellcheckTool(Tool):
         if shutil.which("shellcheck") is None:
             return []
         # shellcheck takes file arguments, not a directory. Collect the
-        # shell scripts we know about; nothing to check means no findings.
-        files = sorted(
-            str(p.relative_to(repo))
-            for p in repo.glob("**/*.sh")
-            if p.is_file()
-        )
+        # project shell scripts (vendored trees are skipped).
+        files = [
+            str(p) for p in iter_source_files(repo, ("*.sh", "*.bash"))
+        ]
         if not files:
             return []
         # Use -f gcc for parseable one-line findings.

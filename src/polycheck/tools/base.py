@@ -27,12 +27,48 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
+from collections.abc import Iterable, Iterator
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import requests
 
 from ..finding import Category, Finding
+
+# Directories that hold generated, vendored, or dependency code. Scanning
+# them produces false positives from other people's code — the exact
+# failure mode polycheck exists to prevent — so file-collecting adapters
+# route their discovery through iter_source_files().
+EXCLUDED_DIRS = frozenset({
+    ".git", ".hg", ".svn", ".tox", ".nox", ".eggs",
+    ".venv", "venv", "env", "__pycache__",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "node_modules", "bower_components",
+    "dist", "build", "target", "out", "vendor",
+    "coverage", "htmlcov", ".next", ".nuxt",
+    "site-packages", "polycheck-reports", ".polycheck",
+})
+
+
+def iter_source_files(
+    repo: Path, patterns: Iterable[str]
+) -> Iterator[Path]:
+    """Yield repo-relative source files matching any pattern.
+
+    Walks the repo with pruning (excluded directories are never entered)
+    and matches ``patterns`` with pathlib semantics, so both basename
+    globs (``*.sh``) and dir-anchored patterns (``.github/workflows/*.yml``)
+    work.
+    """
+    repo = Path(repo)
+    for root, dirs, files in os.walk(repo):
+        dirs[:] = sorted(d for d in dirs if d not in EXCLUDED_DIRS)
+        base = Path(root).relative_to(repo)
+        for name in sorted(files):
+            rel = base / name if str(base) != "." else Path(name)
+            rel_posix = PurePosixPath(rel.as_posix())
+            if any(rel_posix.match(pattern) for pattern in patterns):
+                yield rel
 
 
 class Tool(abc.ABC):

@@ -17,7 +17,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, iter_source_files
 
 _VULTURE_LINE = re.compile(
     r"^(?P<file>[^:]+):(?P<line>\d+):\s*"
@@ -41,12 +41,18 @@ class VultureTool(Tool):
         if shutil.which("vulture") is None:
             return []
 
-        cmd = ["vulture", "."]
+        cmd = ["vulture"]
         # If the user has a whitelist at the repo root, pass it too.
         for name in (".vulture-whitelist.py", "vulture_whitelist.py"):
             wl = repo / name
             if wl.exists():
                 cmd.append(str(wl.relative_to(repo)))
+        # Explicit project file list: vulture on "." would report dead
+        # code inside .venv and other vendored trees.
+        files = [str(p) for p in iter_source_files(repo, ("*.py",))]
+        if not files:
+            return []
+        cmd.extend(files)
 
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300

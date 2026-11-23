@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, iter_source_files
 
 
 class EslintTool(Tool):
@@ -43,12 +43,23 @@ class EslintTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("eslint") is None and shutil.which("npx") is None:
             return []
+        # Explicit project file list: eslint's default ignores cover
+        # node_modules but not .venv/dist, so linting "." reports
+        # vendored code.
+        files = [
+            str(p)
+            for p in iter_source_files(
+                repo, ("*.js", "*.jsx", "*.mjs", "*.cjs", "*.ts", "*.tsx")
+            )
+        ]
+        if not files:
+            return []
         # Prefer the local binary if it exists; fall back to npx (which
         # needs the module name as its first argument).
         if shutil.which("eslint"):
-            cmd = ["eslint", "--format=json", "--no-warn-ignored", "."]
+            cmd = ["eslint", "--format=json", "--no-warn-ignored", *files]
         else:
-            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", "."]
+            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", *files]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )
