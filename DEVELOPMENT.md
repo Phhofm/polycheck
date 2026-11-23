@@ -36,17 +36,14 @@ Environment notes discovered this session:
   Docker check the test patches. Needs `is_installed` monkeypatched too —
   implementation_plan 0.2.
 
-Known silently-broken analyzers (confirmed by inspection 2026-11-23, matching
-implementation_plan Milestone 1):
-
-* `eslint.py` — argv duplication: `eslint eslint --format=json …` when the
-  eslint binary is on PATH (second "eslint" parsed as a lint target).
-* `shellcheck.py` — passes `.` (a directory); shellcheck requires file
-  arguments → silently zero findings.
-* `gitleaks.py` — docstring says `--no-git` but command omits it; JSON report
-  requested without `--report-path`, so stdout parsing is version-fragile.
-* `ruff.py` — severity mapping: everything except `N*` is LOW, so F821
-  (undefined name, a real bug) is filtered out by the default MEDIUM threshold.
+Known silently-broken analyzers: **all resolved 2026-11-23** — the seeded-defect
+verifier (implementation_plan 1.13) now guards every adapter with an
+expectation (`_EXPECTED_FINDINGS` in verify.py), and the locally installed set
+(ruff, mypy, vulture, deptry, gitleaks, shellcheck, tsc, actionlint, depcheck)
+all report `ok` on their seeded repos. eslint's expectation is in place but
+unverified locally (eslint not installed on this machine); knip has no
+expectation yet (its argv bug is fixed, but the synthetic repo may legitimately
+produce no knip findings).
 
 ## Decisions
 
@@ -84,6 +81,22 @@ Format: id, date, decision, reason, status. User decisions override anything her
 Format per §7: date, hypothesis/recommendation, metric + command, before →
 after, verdict, reason.
 
+* **2026-11-23 — seeded-defect verifier (plan 1.13) exposed 6 more silently
+  broken adapters (RED→GREEN).** Hypothesis: tools that run clean on a repo
+  seeded with defects they must catch are broken, so `verify-tools` must fail
+  on that. Metric: `verify_tools()` statuses on the locally installed set.
+  Before: mypy, shellcheck, tsc, vulture, deptry, depcheck all
+  `missed-defects`; after fixes all `ok` (findings 1–3 each; vulture 3,
+  depcheck 3). Root causes: mypy regex lacked the `--show-column` column
+  group; shellcheck's gcc format emits `note:` severity (not in regex);
+  vulture exits with the *finding count* (rc 3 = 3 findings) and the adapter
+  dropped rc ≥ 2; tsc regex expected `error:` but tsc prints `error TS2322:`;
+  knip/tsc/depcheck had the eslint-style argv duplication (`tsc tsc ...`);
+  deptry prints findings to **stderr**; depcheck's heading+bullet format
+  replaced the old `Unused: pkg` lines; gitleaks's default config allowlists
+  the literal `aws_access_key_id`/`aws_secret_access_key` names, so the seeded
+  secret now uses `aws_key =`. Verdict: KEPT. Suite 111 passed; eslint's
+  expectation still needs a machine with eslint installed.
 * **2026-11-23 — pragmatic mypy config (plan 0.3, RED→GREEN).** Hypothesis:
   the strict gate was red on fixable typing, not design problems. Metric:
   `mypy src/polycheck`. Before: 132 errors (strict) → 31 after config change +
@@ -119,6 +132,11 @@ after, verdict, reason.
 1. ~~Four adapter fixes with regression tests~~ — done 2026-11-23.
 2. ~~Env-dependent sonarless test fix~~ — done 2026-11-23.
 3. ~~mypy pragmatic config so the strict gate is green~~ — done 2026-11-23.
-4. Seeded-defect verifier hardening (1.13).
+4. ~~Seeded-defect verifier hardening (1.13)~~ — done 2026-11-23; also exposed
+   and fixed 6 more broken adapters. eslint expectation needs an
+   eslint-installed machine; knip expectation undecided.
 5. Baseline + diff + durable suppressions (D2, extends 5.3).
 6. Surface cuts per D4; README reframe per D3; docs truth pass (6.1).
+7. CI has landed (2.1) — confirm the first real CI run passes on GitHub,
+   including the Windows legs; fix path-separator fallout per plan 2.1.
+8. PyPI release workflow (2.2) after CI is green.
