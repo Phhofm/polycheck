@@ -62,6 +62,50 @@ def test_markdown_reporter(tmp_path: Path):
     assert "attr-defined" in text
 
 
+def test_markdown_caps_repeated_rule_examples(tmp_path: Path):
+    """One rule repeated many times is one insight: the report shows a
+    bounded number of example rows plus an exact hidden count."""
+    findings = [
+        Finding(tool="ruff", rule="E501", severity=Severity.LOW,
+                category=Category.LINT, message=f"line too long {i}",
+                file=f"f{i}.py", line=i)
+        for i in range(20)
+    ]
+    results = [ToolResult(tool="ruff", status="ok", findings=findings,
+                          duration_sec=0.1)]
+
+    written = render("markdown", tmp_path, findings, results,
+                     report_dir=tmp_path / "out")
+    text = written[0].read_text(encoding="utf-8")
+
+    rows = [
+        row for row in text.splitlines()
+        if row.startswith("| LOW ") and "`ruff`" in row and "`E501`" in row
+    ]
+    assert len(rows) == 5  # per-rule example cap
+    assert "and 15 more" in text
+
+
+def test_markdown_shows_distinct_rules_beyond_five(tmp_path: Path):
+    """The cap is per rule, not per category: six distinct rules all show."""
+    findings = [
+        Finding(tool="ruff", rule=f"E50{i}", severity=Severity.LOW,
+                category=Category.LINT, message=f"issue {i}",
+                file="a.py", line=i)
+        for i in range(6)
+    ]
+    results = [ToolResult(tool="ruff", status="ok", findings=findings,
+                          duration_sec=0.1)]
+
+    written = render("markdown", tmp_path, findings, results,
+                     report_dir=tmp_path / "out")
+    text = written[0].read_text(encoding="utf-8")
+
+    for i in range(6):
+        assert f"E50{i}" in text
+    assert "and 0 more" not in text
+
+
 def test_sarif_reporter(tmp_path: Path):
     written = render("sarif", tmp_path, _findings(), _results(),
                      report_dir=tmp_path / "out")

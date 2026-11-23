@@ -116,26 +116,44 @@ def _findings_sections(findings: list) -> list[str]:
     return lines
 
 
+_RULE_EXAMPLE_CAP = 5
+
+
 def _category_findings_table(cat: Category, items: list, cap: int) -> list[str]:
-    """Generate a findings table for a single category."""
+    """Generate a findings table for a single category.
+
+    Rows are capped twice: per rule (a rule repeated 50 times is one
+    insight, not 50 rows) and per category. Both notes carry the exact
+    hidden count so nothing is silently dropped.
+    """
     lines = [
         f"## {cat.value} ({len(items)})",
         "",
         "| Severity | Tool | Rule | Location | Message |",
         "|----------|------|------|----------|---------|",
     ]
-    for f in items[:cap]:
+    per_rule: Counter = Counter()
+    shown = 0
+    for f in items:
+        if shown >= cap:
+            break
+        if per_rule[f.rule] >= _RULE_EXAMPLE_CAP:
+            continue
+        per_rule[f.rule] += 1
+        shown += 1
         sev = _SEV_BADGE.get(f.severity, "?")
         loc = f.file or "?"
         if f.line:
             loc += f":{f.line}"
         msg = f.message.replace("|", "\\|")[:120]
         lines.append(f"| {sev} | `{f.tool}` | `{f.rule}` | `{loc}` | {msg} |")
-    if len(items) > cap:
+    hidden = len(items) - shown
+    if hidden:
         lines.extend([
             "",
-            f"_…and {len(items) - cap} more. See "
-            f"`polycheck-report.json` for the full list._",
+            f"_…and {hidden} more (capped at {_RULE_EXAMPLE_CAP} examples "
+            f"per rule, {cap} per category). See `polycheck-report.json` "
+            f"for the full list._",
         ])
     lines.append("")
     return lines
