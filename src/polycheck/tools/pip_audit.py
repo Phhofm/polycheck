@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
@@ -113,9 +114,9 @@ class PipAuditTool(Tool):
         if not pyproject.exists():
             return []
         try:
-            try:
-                import tomllib  # py311+
-            except ImportError:
+            if sys.version_info >= (3, 11):
+                import tomllib
+            else:
                 import tomli as tomllib
             data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
         except (OSError, ValueError):

@@ -25,6 +25,7 @@ from .config import Config
 from .detect import detect
 from .finding import Category, Finding, Severity
 from .registry import ToolRegistry, default_registry
+from .tools.base import Tool
 
 
 @dataclass
@@ -87,7 +88,7 @@ class Runner:
         findings = [f for r in results for f in r.findings]
         return findings, results
 
-    def _applicable_tools(self) -> list[type]:
+    def _applicable_tools(self) -> list[type[Tool]]:
         """Filter registry → language-applicable → user enable/disable → installed."""
         langs = detect(self.repo)
         lang_slugs = {lang.slug for lang in langs}
@@ -96,7 +97,7 @@ class Runner:
         # detected language. A tool that declares a specific language
         # is NOT eligible when no language is detected (e.g. a fresh
         # empty repo where no analyzer is relevant).
-        candidates: list[type] = []
+        candidates: list[type[Tool]] = []
         for cls in self.registry.all():
             if cls.universal or (lang_slugs and any(slug in lang_slugs for slug in cls.languages)):
                 candidates.append(cls)
@@ -115,7 +116,7 @@ class Runner:
             out.append(cls)
         return out
 
-    def _apply_filters(self, candidates: list[type]) -> list[type]:
+    def _apply_filters(self, candidates: list[type[Tool]]) -> list[type[Tool]]:
         """Apply enable/disable config filters to candidate tools."""
         if self.config.enable:
             wanted = set(self.config.enable)
@@ -125,7 +126,7 @@ class Runner:
             candidates = [c for c in candidates if c.name not in excluded]
         return candidates
 
-    def _run_one(self, tool_cls: type) -> ToolResult:
+    def _run_one(self, tool_cls: type[Tool]) -> ToolResult:
         name = tool_cls.name
         inst = tool_cls()
         start = time.monotonic()

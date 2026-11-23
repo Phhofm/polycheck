@@ -102,16 +102,10 @@ class ToolRegistry:
             if module_name == tools_pkg.__name__ + ".base":
                 continue
             for _name, obj in inspect.getmembers(module, inspect.isclass):
-                if self._should_register(obj, module_name):
+                if obj is Tool or obj.__module__ != module_name:
+                    continue
+                if issubclass(obj, Tool):
                     self.register(obj)
-
-    def _should_register(self, obj, module_name: str) -> bool:
-        """Determine if a class should be registered as a tool."""
-        return (
-            issubclass(obj, Tool)
-            and obj is not Tool
-            and obj.__module__ == module_name
-        )
 
     def __iter__(self) -> Iterator[type[Tool]]:
         return iter(self._tools.values())

@@ -157,7 +157,7 @@ def run_server() -> None:
     try:
         from mcp.server import Server
         from mcp.server.stdio import stdio_server
-        from mcp.types import Resource, TextContent, Tool
+        from mcp.types import AnyUrl, Resource, TextContent, Tool
     except ImportError as e:
         raise SystemExit(
             f"polycheck MCP requires the `mcp` package: {e}. "
@@ -178,13 +178,13 @@ def run_server() -> None:
     async def _list_resources():
         return [
             Resource(
-                uri="polycheck://triage/prompt",
+                uri=AnyUrl("polycheck://triage/prompt"),
                 name="LLM triage prompt",
                 description="The prompt to feed to an LLM with the markdown report.",
                 mimeType="text/plain",
             ),
             Resource(
-                uri="polycheck://session/latest",
+                uri=AnyUrl("polycheck://session/latest"),
                 name="Latest polycheck session",
                 description="The latest guided workflow summary.",
                 mimeType="text/markdown",

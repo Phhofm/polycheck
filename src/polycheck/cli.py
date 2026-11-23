@@ -30,6 +30,7 @@ from rich.table import Table
 from . import __version__
 from .config import Config
 from .detect import detect
+from .finding import Finding
 from .initializer import (
     HOSTS,
     apply_plan,
@@ -40,6 +41,7 @@ from .initializer import (
 from .registry import default_registry
 from .reporters import render as render_report
 from .runner import Runner, dedupe, filter_by_severity
+from .tools.base import Tool
 from .verify import HEAVY_TOOLS, verify_tools
 
 # Auto-discover all bundled tools on import so the CLI is ready to go.
@@ -575,7 +577,7 @@ def _resolve_install_targets(tool: list[str] | None, all_tools: bool) -> list[ty
     return [cls for cls in default_registry.all() if not cls().is_installed()]
 
 
-def _resolve_named_tools(names: list[str]) -> list[type]:
+def _resolve_named_tools(names: list[str]) -> list[type[Tool]]:
     """Resolve tool names to tool classes, exiting on unknown names."""
     targets = []
     for name in names:
@@ -587,7 +589,7 @@ def _resolve_named_tools(names: list[str]) -> list[type]:
     return targets
 
 
-def _confirm_install(targets: list[type], yes: bool) -> None:
+def _confirm_install(targets: list[type[Tool]], yes: bool) -> None:
     """Show installation plan and confirm with user."""
     console.print(f"Will install {len(targets)} tool(s):")
     for cls in targets:
@@ -596,7 +598,7 @@ def _confirm_install(targets: list[type], yes: bool) -> None:
         raise typer.Abort()
 
 
-def _execute_installs(targets: list[type]) -> list[tuple[str, str]]:
+def _execute_installs(targets: list[type[Tool]]) -> list[tuple[str, str]]:
     """Install each target tool, returning list of failures."""
     failed: list[tuple[str, str]] = []
     for cls in targets:
@@ -638,14 +640,14 @@ def _missing_tools(
     only: list[str] | None,
     exclude: set[str],
     config: Config | None = None,
-) -> list[type]:
+) -> list[type[Tool]]:
     """Tool classes that *would* be applicable to ``repo`` but whose
     binary is not on PATH. Excludes any name in ``exclude`` (typically
     the set of tools that already ran).
     """
     langs = detect(repo)
     lang_slugs = {lang.slug for lang in langs}
-    out: list[type] = []
+    out: list[type[Tool]] = []
     for cls in default_registry.all():
         if cls.name in exclude:
             continue
@@ -663,7 +665,7 @@ def _missing_tools(
     return out
 
 
-def _tool_enabled(cls: type, config: Config | None) -> bool:
+def _tool_enabled(cls: type[Tool], config: Config | None) -> bool:
     if config and config.enable and cls.name not in config.enable:
         return False
     if config and cls.name in config.disable:
@@ -671,20 +673,20 @@ def _tool_enabled(cls: type, config: Config | None) -> bool:
     return True
 
 
-def _language_matches(cls: type, lang_slugs: set[str]) -> bool:
+def _language_matches(cls: type[Tool], lang_slugs: set[str]) -> bool:
     if cls.universal:
         return bool(lang_slugs)
     return bool(lang_slugs and any(slug in lang_slugs for slug in cls.languages))
 
 
-def _tool_applicable(cls: type, repo: Path) -> bool:
+def _tool_applicable(cls: type[Tool], repo: Path) -> bool:
     try:
         return cls().is_applicable(repo)
     except Exception:  # noqa: BLE001 — missing-tool checks should not crash
         return True
 
 
-def _exit_code(findings: list, fail_on: str) -> int:
+def _exit_code(findings: list[Finding], fail_on: str) -> int:
     """Return 0 if all findings are below ``fail_on``; 1 otherwise.
 
     The default is MEDIUM, so LOW and INFO findings don't fail the build.

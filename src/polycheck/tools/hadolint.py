@@ -35,10 +35,10 @@ class HadolintTool(Tool):
             return []
         # Collect all Dockerfiles; hadolint takes files, not dirs.
         dockerfiles = list(repo.glob("**/Dockerfile*")) + [repo / "Dockerfile"]
-        dockerfiles = [str(p) for p in dockerfiles if p.is_file()]
-        if not dockerfiles:
+        paths = [str(p) for p in dockerfiles if p.is_file()]
+        if not paths:
             return []
-        cmd = ["hadolint", "--no-fail", "--format", "gnu"] + dockerfiles
+        cmd = ["hadolint", "--no-fail", "--format", "gnu"] + paths
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=120
         )

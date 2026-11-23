@@ -19,6 +19,7 @@ Example ``.polycheck.yml``:
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -81,10 +82,10 @@ class Config:
     @staticmethod
     def _parse_toml(text: str) -> dict[str, Any]:
         """Parse TOML text, handling Python 3.10 compatibility."""
-        try:
-            import tomllib  # py311+
-        except ImportError:
-            import tomli as tomllib
+        if sys.version_info >= (3, 11):
+            import tomllib
+            return tomllib.loads(text)
+        import tomli as tomllib
         return tomllib.loads(text)
 
     def _apply_dict(self, data: dict[str, Any]) -> None:

@@ -28,6 +28,7 @@ import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -145,6 +146,8 @@ class Tool(abc.ABC):
         if self.installer and self.installer.startswith("github-release:"):
             return _install_github_release(self.installer, self.binary)
         cmd = build_install_command(self.installer, self.name)
+        if cmd is None:
+            return False, f"no automatic installer for {self.name}; see {self.install_hint()}"
         # Check if required package manager is available
         if not self._check_package_manager(cmd):
             return False, f"required package manager not found for {self.name}"
@@ -221,9 +224,9 @@ def _github_release_supported(installer: str) -> bool:
 def _install_github_release(installer: str, binary: str) -> tuple[bool, str]:
     """Install a binary from the latest GitHub release for the current OS/arch."""
     repo = installer.removeprefix("github-release:")
-    version, assets = _latest_github_release_assets(repo)
+    version, assets, fetch_error = _latest_github_release_assets(repo)
     if version is None:
-        return False, f"could not fetch latest release for {repo}: {assets}"
+        return False, f"could not fetch latest release for {repo}: {fetch_error}"
 
     asset_name = _github_release_asset(repo, version, platform.system(), platform.machine())
     if asset_name is None:
@@ -247,8 +250,14 @@ def _install_github_release(installer: str, binary: str) -> tuple[bool, str]:
     return True, f"installed {binary} to {target}.{path_note}"
 
 
-def _latest_github_release_assets(repo: str) -> tuple[str | None, list[dict]]:
-    """Fetch the latest release tag and asset metadata from GitHub."""
+def _latest_github_release_assets(
+    repo: str,
+) -> tuple[str | None, list[dict[str, Any]], str]:
+    """Fetch the latest release tag and asset metadata from GitHub.
+
+    Returns ``(tag, assets, error)``; ``tag`` is None when the fetch
+    failed and ``error`` carries the reason.
+    """
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -257,20 +266,20 @@ def _latest_github_release_assets(repo: str) -> tuple[str | None, list[dict]]:
     try:
         response = requests.get(url, headers=headers, timeout=30)
     except requests.RequestException as exc:
-        return None, str(exc)
+        return None, [], str(exc)
     if response.status_code != 200:
-        return None, f"HTTP {response.status_code}: {response.text[:200]}"
+        return None, [], f"HTTP {response.status_code}: {response.text[:200]}"
     try:
         data = response.json()
     except ValueError as exc:
-        return None, str(exc)
+        return None, [], str(exc)
     tag = data.get("tag_name") or data.get("name")
     if not tag:
-        return None, "release missing tag_name"
+        return None, [], "release missing tag_name"
     assets = data.get("assets", [])
     if not isinstance(assets, list):
-        return None, "release assets missing"
-    return tag.lstrip("v"), assets
+        return None, [], "release assets missing"
+    return tag.lstrip("v"), assets, ""
 
 
 def _download_and_install_asset(asset_url: str, binary: str) -> Path:
