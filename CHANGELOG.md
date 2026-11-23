@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Features:
+  * Vendored/build directories (`.venv`, `node_modules`, `dist`, `vendor`,
+    …) are excluded from file-collecting analyzers — no more false
+    positives from other people's code in dependency trees
+  * MCP progress notifications (`notifications/progress`) during
+    `polycheck.run` when the client requests them
+  * Category triage knowledge folded into the LLM triage prompt
+
+Simplifications:
+  * MCP server slimmed to two tools (`polycheck.run`, `polycheck.audit_run`);
+    diagnostics, listings, explanations, and installs are CLI-only
+    (`polycheck doctor` / `install` / `list-tools` / `explain`)
+  * GitHub-release binary downloads and `curl | bash` installs removed from
+    all installers — polycheck no longer fetches unverified executables;
+    package-manager installs (pipx/pip/npm/brew/apt) and explicit hints remain
+
 ## 0.2.1 (2026-11-23)
 
 Fixes:

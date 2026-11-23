@@ -214,10 +214,16 @@ after, verdict, reason.
    fast-forwarded, `e7f8827..03e8977`), Release workflow published
    `polycheck-0.2.0` (wheel + sdist) via trusted publishing; verified live at
    https://pypi.org/pypi/polycheck/json. `pipx install polycheck` works.
-9. Remaining D4 surface cuts (installer zoo → hints, MCP tool sprawl → 2
-   tools, sonarless → opt-in) — deliberate simplification pass; the coverage
-   measurement above supports it (least-tested code = the cut targets).
-10. Real-world file walker: default exclude dirs (`.venv`, `node_modules`,
-    `dist`) in adapters' `is_applicable`/file collection (plan 1.1/1.8).
-11. MCP progress notifications (spec-standard `notifications/progress`) for
-    long scans — the spec-compliant version of the "signal when done" idea.
+9. ~~Remaining D4 surface cuts~~ — done 2026-11-23: MCP slimmed to 2 tools
+   (retired doctor/install/list/explain → CLI equivalents, category triage
+   knowledge folded into the triage prompt), github-release + curl|bash
+   installers replaced by hints (no unverified binaries downloaded),
+   sonarless opt-in achieved via manual install (see D4 refinement below).
+10. ~~Exclude vendored/build dirs~~ — done 2026-11-23: shared
+    `iter_source_files` walker (pruned os.walk) used by mypy, eslint,
+    vulture, shellcheck, hadolint; noisy-repo scan reports only real
+    findings. Perf claim measured and dropped (ruff self-excludes; globs
+    short-circuit); the driver is noise correctness.
+11. ~~MCP progress notifications~~ — done 2026-11-23.
+12. Next release (0.2.2): walker, MCP slimming, installer hints, progress
+    notifications — CHANGELOG "Unreleased" section already seeded.
