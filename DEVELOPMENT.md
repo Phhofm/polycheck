@@ -162,8 +162,8 @@ after, verdict, reason.
    eslint-installed machine; knip expectation undecided.
 5. ~~Baseline + diff + durable suppressions (D2)~~ — done 2026-11-23.
 6. ~~README reframe (D3), release workflow (2.2), version 0.2.0~~ — done.
-7. CI has landed (2.1) — confirm the first real CI run passes on GitHub,
-   including the Windows legs; fix path-separator fallout per plan 2.1.
+7. ~~CI has landed (2.1)~~ — done 2026-11-23: full matrix green (ubuntu/macos/
+   windows × 3.10/3.12/3.13 + selfcheck dogfood), run 45198067581.
 8. PyPI release (2.2): manual Trusted-Publisher setup + `v0.2.0` tag (see
    manual steps above).
 9. Remaining D4 surface cuts (installer zoo → hints, MCP tool sprawl → 2
