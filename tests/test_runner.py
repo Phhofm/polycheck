@@ -125,3 +125,65 @@ def test_runner_marks_errors(tmp_path: Path):
     assert findings == []
     assert results[0].status == "error"
     assert "kaboom" in (results[0].error or "")
+
+
+def _finding(rule: str, file: str = "a.py", line: int = 1) -> Finding:
+    return Finding(
+        tool="t", rule=rule, severity=Severity.MEDIUM,
+        category=Category.LINT, message=f"{rule} in {file}:{line}",
+        file=file, line=line,
+    )
+
+
+def test_apply_suppressions_rule_only():
+    from polycheck.runner import apply_suppressions
+
+    f1 = _finding("F401")
+    f2 = _finding("F821")
+    out = apply_suppressions([f1, f2], ["F401"])
+
+    assert out == [f2]
+
+
+def test_apply_suppressions_rule_at_file():
+    from polycheck.runner import apply_suppressions
+
+    f1 = _finding("SC2086", file="script.sh")
+    f2 = _finding("SC2086", file="other.sh")
+    out = apply_suppressions([f1, f2], ["SC2086@script.sh"])
+
+    assert out == [f2]
+
+
+def test_apply_suppressions_file_match_ignores_fileless():
+    """A finding without a file cannot match a rule@file suppression."""
+    from polycheck.runner import apply_suppressions
+
+    f1 = _finding("F401")
+    f1.file = None
+    assert apply_suppressions([f1], ["F401@a.py"]) == [f1]
+
+
+def test_apply_suppressions_empty_pattern_list_is_identity():
+    from polycheck.runner import apply_suppressions
+
+    findings = [_finding("F401"), _finding("F821")]
+    assert apply_suppressions(findings, []) == findings
+    assert apply_suppressions(findings, ["  "]) == findings
+
+
+def test_filter_by_baseline_keeps_only_new():
+    from polycheck.runner import filter_by_baseline
+
+    known = _finding("F401", line=1)
+    new = _finding("F401", line=2)
+    baseline = {known.fingerprint()}
+
+    assert filter_by_baseline([known, new], baseline) == [new]
+
+
+def test_filter_by_baseline_none_is_identity():
+    from polycheck.runner import filter_by_baseline
+
+    findings = [_finding("F401")]
+    assert filter_by_baseline(findings, None) == findings

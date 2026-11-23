@@ -15,10 +15,12 @@ are pure: they take a Path, return list[Finding].
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import subprocess
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
@@ -162,6 +164,95 @@ def dedupe(findings: list[Finding]) -> list[Finding]:
         seen.add(f.fingerprint())
         out.append(f)
     return out
+
+
+def apply_suppressions(
+    findings: list[Finding], patterns: list[str]
+) -> list[Finding]:
+    """Drop findings matching a durable suppress entry.
+
+    Entries are ``rule`` (suppress everywhere) or ``rule@file``
+    (suppress in one file, repo-relative). This is how triage verdicts
+    persist: an LLM (or user) marks a finding FALSE POSITIVE once and
+    the entry keeps it out of every later run.
+    """
+    if not patterns:
+        return findings
+    rule_only: set[str] = set()
+    rule_file: set[tuple[str, str]] = set()
+    for pattern in patterns:
+        entry = pattern.strip()
+        if not entry:
+            continue
+        if "@" in entry:
+            rule, file = entry.split("@", 1)
+            rule_file.add((rule.strip(), file.strip()))
+        else:
+            rule_only.add(entry)
+    out: list[Finding] = []
+    for f in findings:
+        if f.rule in rule_only:
+            continue
+        if f.file and (f.rule, f.file) in rule_file:
+            continue
+        out.append(f)
+    return out
+
+
+def filter_by_baseline(
+    findings: list[Finding], baseline: set[str] | None
+) -> list[Finding]:
+    """Keep only findings whose fingerprint is not in the baseline.
+
+    ``None`` (no baseline in play) is an identity function. Diff mode:
+    a scan reports what is *new* since the baseline was taken.
+    """
+    if baseline is None:
+        return findings
+    return [f for f in findings if f.fingerprint() not in baseline]
+
+
+# --- baseline ---------------------------------------------------------------
+
+BASELINE_FILENAME = "polycheck-baseline.json"
+
+
+def save_baseline(report_dir: Path, findings: list[Finding]) -> Path:
+    """Write the fingerprint baseline for diff mode to ``report_dir``.
+
+    The baseline holds only fingerprints — no messages or paths — so it
+    stays small and stable across message wording changes.
+    """
+    report_dir.mkdir(parents=True, exist_ok=True)
+    path = report_dir / BASELINE_FILENAME
+    payload = {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "fingerprints": sorted({f.fingerprint() for f in findings}),
+    }
+    path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def load_baseline(report_dir: Path) -> set[str] | None:
+    """Load the baseline fingerprint set, or ``None`` when absent.
+
+    A malformed baseline is treated as absent (diff mode then reports
+    everything) — it must never crash a scan or silently hide findings.
+    """
+    path = report_dir / BASELINE_FILENAME
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        fps = data.get("fingerprints", [])
+        if not isinstance(fps, list):
+            return None
+        return {str(x) for x in fps}
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return None
 
 
 def filter_by_severity(

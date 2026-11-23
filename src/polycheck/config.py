@@ -42,6 +42,9 @@ class Config:
 
     enable: list[str] = field(default_factory=list)
     disable: list[str] = field(default_factory=list)
+    # Durable triage verdicts: "rule" suppresses everywhere, "rule@file"
+    # in one file. See runner.apply_suppressions.
+    suppress: list[str] = field(default_factory=list)
     severity_threshold: str = "INFO"   # minimum severity to keep
     timeout: int = 300                 # per-tool seconds
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -94,6 +97,8 @@ class Config:
             self.enable = list(data["enable"])
         if "disable" in data:
             self.disable = list(data["disable"])
+        if "suppress" in data:
+            self.suppress = [str(x) for x in data["suppress"]]
         if "severity_threshold" in data:
             self.severity_threshold = str(data["severity_threshold"]).upper()
         if "timeout" in data:

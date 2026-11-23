@@ -37,10 +37,17 @@ from pathlib import Path
 from mcp.types import TextContent
 
 from .config import Config
-from .finding import Category, Severity
+from .finding import Category, Finding, Severity
 from .registry import default_registry
 from .reporters import render as render_report
-from .runner import Runner, dedupe, filter_by_severity
+from .runner import (
+    Runner,
+    apply_suppressions,
+    dedupe,
+    filter_by_baseline,
+    filter_by_severity,
+    load_baseline,
+)
 from .session import append_event, write_run_summary, write_session_summary
 from .tools.base import Tool
 
@@ -87,6 +94,26 @@ DEPS, CVE, and SECRETS findings — including results from SonarQube
 8. Apply fixes ONLY after user approval.
 9. Summarize: what was fixed, what was deferred, what was flagged as
    false positive.
+
+## Baseline & Durable Suppressions
+
+Keep the triage loop cheap across runs:
+
+1. After a run the user accepts (fixed or triaged everything), suggest
+   taking a baseline: `polycheck baseline <repo>`.
+2. Later runs with `diff: true` report only NEW findings — the payload's
+   `baseline` object carries `known` and `new` counts.
+3. When a finding is a FALSE POSITIVE, persist the verdict instead of
+   re-arguing it every run: append the rule to the `suppress:` list in
+   `.polycheck.yml` (format: `- RULE` for everywhere, or
+   `- RULE@path/file.ext` for one file). Example:
+
+     suppress:
+       - F401
+       - SC2086@scripts/legacy.sh
+
+4. Never edit reports or code to silence a finding — suppressions live
+   in `.polycheck.yml` so they are reviewable and revertible.
 
 ## Missing Tools
 
@@ -241,6 +268,12 @@ def _workflow_tool(name: str):
                 "install_confirmed": {
                     "type": "boolean",
                     "description": "Must be true when install_mode is tools_only. Default: false.",
+                },
+                "diff": {
+                    "type": "boolean",
+                    "description": "Only report findings that are new since the last "
+                    "baseline (created by running polycheck with diff off and "
+                    "saving it via `polycheck baseline`). Default: false.",
                 },
                 "parallel": {
                     "type": "boolean",
@@ -500,7 +533,13 @@ def _handle_polycheck(arguments: dict) -> list:
     )
     findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
+    findings = apply_suppressions(findings, cfg.suppress)
     append_event(repo, run_id, {"event": "scan_finished", "total_findings": len(findings)})
+
+    diff_requested = bool(arguments.get("diff", False))
+    baseline_info: dict | None = None
+    if diff_requested:
+        findings, baseline_info = _filter_to_new_findings(repo, cfg, findings)
 
     out_dir = _guided_report_dir(repo, cfg.output.report_dir, run_id)
     if isinstance(out_dir, list):
@@ -529,11 +568,38 @@ def _handle_polycheck(arguments: dict) -> list:
 
     session = write_session_summary(repo, summary)
     summary["session"] = session
+    if baseline_info is not None:
+        summary["baseline"] = baseline_info
     _LAST_RUN["latest_markdown"] = session["latest_markdown"]
     _LAST_RUN["latest_json"] = session["latest_json"]
 
     write_run_summary(repo, run_id, summary)
     return [TextContent(type="text", text=json.dumps(summary, indent=2, default=str))]
+
+
+def _filter_to_new_findings(
+    repo: Path, cfg: Config, findings: list[Finding]
+) -> tuple[list[Finding], dict]:
+    """Diff mode: keep only findings newer than the baseline and return
+    the payload the summary should carry about it."""
+    baseline = load_baseline(repo / cfg.output.report_dir)
+    if baseline is None:
+        return findings, {
+            "diff": True,
+            "baseline": None,
+            "note": (
+                "no baseline yet — take one with `polycheck baseline` so "
+                "future runs report only new findings"
+            ),
+        }
+    new = filter_by_baseline(findings, baseline)
+    info = {
+        "diff": True,
+        "baseline_count": len(baseline),
+        "known": len(findings) - len(new),
+        "new": len(new),
+    }
+    return new, info
 
 
 def _dependency_check(repo: Path, cfg: Config | None = None, tools: list[str] | None = None) -> dict:

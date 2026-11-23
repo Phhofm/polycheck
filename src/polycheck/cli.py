@@ -40,7 +40,15 @@ from .initializer import (
 )
 from .registry import default_registry
 from .reporters import render as render_report
-from .runner import Runner, dedupe, filter_by_severity
+from .runner import (
+    Runner,
+    apply_suppressions,
+    dedupe,
+    filter_by_baseline,
+    filter_by_severity,
+    load_baseline,
+    save_baseline,
+)
 from .tools.base import Tool
 from .verify import HEAVY_TOOLS, verify_tools
 
@@ -95,6 +103,12 @@ def run(
         None, "--report-dir", help="Where to write reports (default: polycheck-reports)"
     ),
     no_dedupe: bool = typer.Option(False, "--no-dedupe"),
+    diff: bool = typer.Option(
+        False,
+        "--diff",
+        help="Only report findings that are new since the last "
+        "`polycheck baseline` (reports everything when no baseline exists).",
+    ),
     install: bool = typer.Option(
         False,
         "--install",
@@ -116,12 +130,16 @@ def run(
     if install:
         _auto_install_missing(only=tool or None, repo=repo)
 
-    runner = Runner(repo=repo, config=cfg)
+    runner = Runner(repo=repo, config=cfg, registry=default_registry)
     findings, results = runner.run(parallel=parallel, tools=tool or None)
 
     if not no_dedupe:
         findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
+    findings = apply_suppressions(findings, cfg.suppress)
+
+    if diff:
+        findings = _apply_diff_baseline(cfg, repo, findings)
 
     written = _write_reports(cfg, repo, findings, results)
     _print_summary(results, findings, written)
@@ -135,6 +153,69 @@ def run(
         _print_missing(not_run)
 
     raise typer.Exit(code=_exit_code(findings, fail_on.upper()))
+
+
+def _apply_diff_baseline(cfg: Config, repo: Path, findings: list) -> list:
+    """Filter findings to those newer than the baseline, with an
+    honest console note when no baseline exists yet."""
+    baseline = load_baseline(repo / cfg.output.report_dir)
+    if baseline is None:
+        console.print(
+            "[yellow]--diff:[/yellow] no baseline yet — run "
+            "[bold]polycheck baseline[/bold] first; reporting all findings"
+        )
+        return findings
+    new = filter_by_baseline(findings, baseline)
+    known = len(findings) - len(new)
+    console.print(
+        f"[cyan]--diff:[/cyan] baseline has {len(baseline)} finding(s) — "
+        f"{known} known, [bold]{len(new)} new[/bold]"
+    )
+    return new
+
+
+@app.command()
+def baseline(
+    path: Path = typer.Argument(
+        Path("."), exists=True, file_okay=False, dir_okay=True, resolve_path=True
+    ),
+    parallel: bool = typer.Option(False, "--parallel", help="Run tools in parallel"),
+    tool: list[str] = typer.Option(
+        None, "--tool", "-t", help="Restrict to specific tool name(s) (repeatable)"
+    ),
+    severity: str = typer.Option(
+        None,
+        "--severity",
+        help="Minimum severity to keep (INFO, LOW, MEDIUM, HIGH, CRITICAL)",
+    ),
+    config: Path = typer.Option(
+        None, "--config", "-c", help="Path to a .polycheck.yml"
+    ),
+    report_dir: Path = typer.Option(
+        None, "--report-dir", help="Where to write the baseline (default: polycheck-reports)"
+    ),
+) -> None:
+    """Snapshot today's findings as the baseline for `run --diff`.
+
+    Run this once on a repo whose current findings are accepted; later
+    `polycheck run --diff` then reports only NEW findings. Re-run it
+    after fixing or triaging to move the needle forward.
+    """
+    cfg = _load_config(config, path, severity, None, report_dir)
+    repo = path.resolve()
+    console.print(f"[bold]polycheck[/bold] {__version__} — {repo}")
+
+    runner = Runner(repo=repo, config=cfg, registry=default_registry)
+    findings, _results = runner.run(parallel=parallel, tools=tool or None)
+    findings = dedupe(findings)
+    findings = filter_by_severity(findings, cfg.severity_threshold)
+    findings = apply_suppressions(findings, cfg.suppress)
+
+    baseline_path = save_baseline(repo / cfg.output.report_dir, findings)
+    console.print(
+        f"[green]Baseline saved:[/green] {len(findings)} findings "
+        f"→ {baseline_path}"
+    )
 
 
 def _load_config(

@@ -38,6 +38,20 @@ def test_load_yaml_alt_name(tmp_path: Path):
     assert cfg.enable == ["ruff"]
 
 
+def test_load_suppress_entries(tmp_path: Path):
+    (tmp_path / ".polycheck.yml").write_text(textwrap.dedent("""
+        suppress:
+          - F401
+          - SC2086@script.sh
+    """))
+    cfg = Config.load(tmp_path)
+    assert cfg.suppress == ["F401", "SC2086@script.sh"]
+
+
+def test_defaults_have_no_suppressions(tmp_path: Path):
+    assert Config.load(tmp_path).suppress == []
+
+
 def test_load_toml(tmp_path: Path):
     (tmp_path / ".polycheck.toml").write_text(textwrap.dedent("""
         enable = ["ruff", "mypy"]

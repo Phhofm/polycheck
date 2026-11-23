@@ -278,3 +278,110 @@ def test_dispatch_routes_alias_to_guided_workflow(monkeypatch):
     assert mcp_server._dispatch_tool("polycheck.run", {"repo": "a"}) == ["ok"]
     assert mcp_server._dispatch_tool("polycheck", {"repo": "b"}) == ["ok"]
     assert calls == [{"repo": "a"}, {"repo": "b"}]
+
+
+def test_diff_param_reports_only_new_findings(tmp_path: Path, monkeypatch):
+    """diff:true filters findings to those newer than the baseline and
+    carries known/new counts in the summary payload."""
+    import json as _json
+
+    from polycheck import mcp_server
+    from polycheck.finding import Category, Finding, Severity
+    from polycheck.runner import ToolResult, save_baseline
+
+    finding = Finding(
+        tool="stub", rule="F401", severity=Severity.MEDIUM,
+        category=Category.LINT, message="unused import", file="a.py", line=1,
+    )
+    new_finding = Finding(
+        tool="stub", rule="F821", severity=Severity.MEDIUM,
+        category=Category.LINT, message="undefined name", file="b.py", line=2,
+    )
+    result = ToolResult(tool="stub", status="ok", findings=[finding, new_finding], duration_sec=0.1)
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None):
+            return [finding, new_finding], [result]
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {"missing_tools": [], "missing_system_dependencies": []},
+    )
+
+    # Baseline knows the first finding only.
+    save_baseline(tmp_path / "polycheck-reports", [finding])
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "severity": "MEDIUM",
+        "parallel": False,
+        "diff": True,
+    })
+    payload = _json.loads(response[0].text)
+
+    assert payload["baseline"]["diff"] is True
+    assert payload["baseline"]["baseline_count"] == 1
+    assert payload["baseline"]["known"] == 1
+    assert payload["baseline"]["new"] == 1
+
+
+def test_diff_param_without_baseline_reports_all_with_note(tmp_path: Path, monkeypatch):
+    import json as _json
+
+    from polycheck import mcp_server
+    from polycheck.finding import Category, Finding, Severity
+    from polycheck.runner import ToolResult
+
+    finding = Finding(
+        tool="stub", rule="F401", severity=Severity.MEDIUM,
+        category=Category.LINT, message="unused import", file="a.py", line=1,
+    )
+    result = ToolResult(tool="stub", status="ok", findings=[finding], duration_sec=0.1)
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None):
+            return [finding], [result]
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {"missing_tools": [], "missing_system_dependencies": []},
+    )
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "severity": "MEDIUM",
+        "parallel": False,
+        "diff": True,
+    })
+    payload = _json.loads(response[0].text)
+
+    assert payload["baseline"]["baseline"] is None
+    assert "baseline" in payload["baseline"]["note"]
+
+
+def test_claude_workflow_template_has_required_frontmatter():
+    from polycheck.workflows import CLAUDE_WORKFLOW
+
+    assert CLAUDE_WORKFLOW.startswith("---")
+    assert "name: polycheck" in CLAUDE_WORKFLOW
+    assert "description:" in CLAUDE_WORKFLOW
+
+
+def test_shared_workflow_steps_mention_baseline_and_suppress():
+    from polycheck.workflows import _SHARED_STEPS
+
+    assert "polycheck baseline" in _SHARED_STEPS
+    assert "diff: true" in _SHARED_STEPS
+    assert "suppress:" in _SHARED_STEPS
