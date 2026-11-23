@@ -109,6 +109,22 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-23 — baseline + diff + durable suppressions shipped (D2, extends
+  5.3).** Hypothesis: the daily-driver gap is "only show me what's new". What
+  landed: `polycheck baseline`, `run --diff` (fingerprint baseline in
+  `polycheck-reports/`, malformed baseline treated as absent — never crashes
+  or hides findings), `.polycheck.yml` `suppress:` (`rule` / `rule@file`),
+  MCP `polycheck.run` `diff` param with `baseline` known/new payload, guided
+  workflow + triage prompt teach the loop, Claude skill frontmatter fixed
+  (MASTERPLAN T1). Tests: runner suppression/baseline units, baseline
+  roundtrip, CLI flow (hermetic stub registry — note: Runner now receives
+  `default_registry` explicitly from the CLI, which the monkeypatch-based
+  tests rely on), MCP diff payloads, meta consistency tests (changelog ↔
+  version, template frontmatter). Verdict: KEPT.
+* **2026-11-23 — release readiness (2.2).** `release.yml` (trusted
+  publishing, `pypi` environment), version bumped 0.1.0 → 0.2.0 with
+  CHANGELOG entry, README install block updated. Manual steps for Philip
+  recorded above.
 * **2026-11-23 — four adapter fixes (RED→GREEN).** Hypothesis: eslint/shellcheck/
   gitleaks/ruff were silently broken (see list above). Metric: new regression
   tests `tests/test_tool_adapters.py` + full suite
@@ -127,6 +143,15 @@ after, verdict, reason.
   132 errors, pytest now green. Verdict: record — MASTERPLAN's "all three must
   pass" gate is red on mypy only; the 0.1.0-era results were stale.
 
+## Manual release steps (the agent cannot do these)
+
+1. On pypi.org, create the project `polycheck` as a **pending Trusted
+   Publisher**: GitHub owner `Phhofm`, repo `polycheck`, workflow
+   `release.yml`, environment `pypi`.
+2. After CI is green on `dev` and the branch is merged to `main`:
+   `git tag v0.2.0 && git push origin v0.2.0` — the release workflow builds
+   and publishes via trusted publishing.
+
 ## Open tasks (ordered)
 
 1. ~~Four adapter fixes with regression tests~~ — done 2026-11-23.
@@ -135,8 +160,15 @@ after, verdict, reason.
 4. ~~Seeded-defect verifier hardening (1.13)~~ — done 2026-11-23; also exposed
    and fixed 6 more broken adapters. eslint expectation needs an
    eslint-installed machine; knip expectation undecided.
-5. Baseline + diff + durable suppressions (D2, extends 5.3).
-6. Surface cuts per D4; README reframe per D3; docs truth pass (6.1).
+5. ~~Baseline + diff + durable suppressions (D2)~~ — done 2026-11-23.
+6. ~~README reframe (D3), release workflow (2.2), version 0.2.0~~ — done.
 7. CI has landed (2.1) — confirm the first real CI run passes on GitHub,
    including the Windows legs; fix path-separator fallout per plan 2.1.
-8. PyPI release workflow (2.2) after CI is green.
+8. PyPI release (2.2): manual Trusted-Publisher setup + `v0.2.0` tag (see
+   manual steps above).
+9. Remaining D4 surface cuts (installer zoo → hints, MCP tool sprawl → 2
+   tools, sonarless → opt-in) — deliberate simplification pass.
+10. Real-world file walker: default exclude dirs (`.venv`, `node_modules`,
+    `dist`) in adapters' `is_applicable`/file collection (plan 1.1/1.8).
+11. MCP progress notifications (spec-standard `notifications/progress`) for
+    long scans — the spec-compliant version of the "signal when done" idea.

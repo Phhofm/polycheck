@@ -1,15 +1,18 @@
 # polycheck
 
-> **Stop wasting LLM tokens re-reading codebases.**
+> **Let your LLM triage a verified report instead of hallucinating a review.**
 > polycheck runs the cheap, exhaustive static-analysis pass first
 > (linters, type-checkers, CVE scanners, secret scanners, SonarQube)
-> and hands the LLM a tight, structured report to triage. The LLM
-> never has to read source code it doesn't need to.
+> and hands the LLM a tight, located, reproducible findings list to
+> adjudicate. The LLM verifies instead of guessing — every finding has
+> a tool, a rule, a file, and a line.
 
-> **Self-audit:** `polycheck run .` on this repo's source tree returns
-> **0 findings at MEDIUM+ severity** across the bundled analyzers that are
-> installed and applicable, including optional SonarQube via sonarless when
-> Docker and the `sonarless` binary are available. Last verified: 0.1.0.
+> **Self-audit, enforced:** every bundled adapter is guarded by a
+> seeded-defect verifier (`polycheck verify-tools`) — a tool that runs
+> clean on a repo seeded with defects it must catch reports
+> `missed-defects`, never a false "clean bill of health". `polycheck
+> run .` on this repo's own source returns **0 findings at MEDIUM+
+> severity**, and CI re-checks that on every push.
 
 ---
 
@@ -21,9 +24,8 @@ your assistant integration, then run `/polycheck` in any repository.
 ### Step 1: Install polycheck
 
 ```bash
-pipx install polycheck
-# Or from source:
 pipx install "git+https://github.com/Phhofm/polycheck.git"
+# Once published on PyPI: pipx install polycheck
 ```
 
 ### Step 2: Initialize `/polycheck`
@@ -93,6 +95,10 @@ What happens:
 6. The LLM shows a compact summary grouped by tool and severity.
 7. If fixable findings exist, the LLM asks before applying fixes.
 8. After fixes, the LLM reruns `polycheck.run` to verify the result.
+9. Once you accept the current state, the LLM suggests `polycheck baseline`;
+   later `polycheck.run` calls with `diff: true` surface only new findings.
+10. FALSE-POSITIVE verdicts land in `.polycheck.yml` `suppress:` so they
+    are never re-argued.
 
 If the MCP tool is unavailable, the generated workflow falls back to:
 
@@ -188,6 +194,8 @@ polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
 polycheck run . --install                  # install missing tools, then run
 polycheck run . --parallel                 # run tools concurrently
 polycheck run . --output markdown          # markdown only (no JSON / sarif)
+polycheck baseline .                       # snapshot current findings
+polycheck run . --diff                     # only findings NEW since the baseline
 polycheck init --host all --scope global   # initialize /polycheck workflows
 polycheck init --dry-run --host all        # preview initialization
 polycheck doctor                           # show installed/missing tools, exit 0 by default
@@ -282,7 +290,7 @@ tools.
 
 | Tool | Description |
 |------|-------------|
-| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, and next action. Do not call `polycheck.doctor` manually for normal runs. |
+| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. Do not call `polycheck.doctor` manually for normal runs. |
 | `polycheck` | Compatibility alias for `polycheck.run`. |
 
 ### Advanced tools
@@ -360,6 +368,33 @@ extra_args:             # per-tool extra CLI args
 disable:
   - sonarless
 ```
+
+### Baseline & durable suppressions
+
+The daily loop: run once, triage, snapshot — then only *new* code
+produces findings.
+
+```bash
+polycheck baseline .        # snapshot today's accepted findings
+polycheck run . --diff      # report only NEW findings (exit 1 gates on new ones)
+```
+
+The baseline stores fingerprints only (tool, rule, file, line,
+column) in `polycheck-reports/polycheck-baseline.json` — small, stable
+across message changes. Re-run `polycheck baseline` after fixing or
+triaging to move the needle forward.
+
+When the LLM (or you) classifies a finding as FALSE POSITIVE, persist
+that verdict so it is never re-argued:
+
+```yaml
+suppress:
+  - F401                    # suppress rule everywhere
+  - SC2086@scripts/legacy.sh  # suppress rule in one file only
+```
+
+Suppressed findings are dropped before reports are written and before
+the CI exit-code gate, so they never reappear in a later run.
 
 ---
 

@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.2.0 (2026-11-23)
+
+Every bundled analyzer is now guarded by a seeded-defect verifier, and the
+daily-driver features landed.
+
+Features:
+  * `polycheck baseline` + `run --diff` — report only findings that are new
+    since the baseline (fingerprint-based, stored in `polycheck-reports/`)
+  * Durable suppressions: `.polycheck.yml` `suppress:` list (`rule` or
+    `rule@file`) persists FALSE-POSITIVE triage verdicts across runs
+  * Guided MCP workflow teaches the baseline/suppress loop; `polycheck.run`
+    gained a `diff` parameter and reports `baseline` known/new counts
+  * `verify-tools` fails with `missed-defects` when an analyzer runs clean on
+    a repo seeded with defects it must catch (per-tool expectations)
+  * Claude Code skill template now ships the required YAML frontmatter
+
+Fixes (silently broken adapters — all verified against real tool output):
+  * eslint, tsc, knip, depcheck: argv duplication (`tsc tsc ...`) when the
+    binary was on PATH
+  * shellcheck: passed a directory argument; parses `note:` severity now
+  * gitleaks: parses the JSON report from `--report-path`, scans the working
+    tree (`--no-git`), surfaces real failures as errors
+  * mypy: parses `--show-column` output
+  * vulture: exit code is the finding count, not an error signal
+  * deptry: reads findings from stderr, parses file-level DEP002 lines
+  * depcheck: parses the heading+bullet output format
+  * ruff: bug-shaped rules (F821/F811) are HIGH, E7xx MEDIUM, so real bugs
+    survive the default MEDIUM filter
+
+Quality gates:
+  * GitHub Actions CI: 9-job OS/Python matrix (lint, strict-ish mypy, tests)
+    plus a self-check job that dogfoods polycheck on this repo
+  * `mypy src/polycheck` and `mypy .` (whole repo) pass; pragmatic config
+  * Test suite: 134 tests
+
 ## 0.1.0 (2026-06-05)
 
 Initial MVP. polycheck — static-first, LLM-triage-ready code analysis.
