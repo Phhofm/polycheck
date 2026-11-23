@@ -109,6 +109,30 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-23 — end-to-end install test from PyPI caught a real release bug.**
+  Metric: fresh `pipx install --force polycheck` (the published 0.2.0) →
+  `polycheck --version`. Before: printed **0.1.0** while the wheel metadata
+  said 0.2.0 (hardcoded `__version__` in `__init__.py` missed in the bump).
+  Also verified on an unrelated repo (bottle, shallow clone): scan works
+  cross-tool (deptry 43 / mypy 54 / ruff 168 findings, sub-2s per tool,
+  55 after MEDIUM filter), `--fail-on HIGH` exits 1 on real undefined-name
+  findings. Fix: version consistency test (pyproject ↔ `__init__` ↔
+  CHANGELOG) + 0.2.1 release. Verdict: KEPT — the E2E install check is now a
+  standard post-release step.
+* **2026-11-23 — markdown per-rule example cap (plan 5.1), measured.** Metric:
+  byte size of `polycheck-report.md` for the same unfiltered scan (`--severity
+  INFO --output markdown --tool ruff --tool mypy --tool deptry`) of bottle.
+  Before: 16,347 bytes. After: 9,389 bytes (**−43%**), zero information loss
+  (exact hidden counts per rule/category, full list stays in the JSON report).
+  Verdict: KEPT.
+* **2026-11-23 — coverage measurement in a disposable venv.** Metric:
+  `pytest --cov=polycheck` (fresh `python3 -m venv` + `pip install -e ".[dev]"`,
+  which also validates the from-source dev setup; `--version` correctly
+  reports 0.2.1 there). Result: **71% total**. The lowest-covered files are
+  exactly the D4 cut targets (base.py installer zoo 45%, sonarless 40%,
+  pip-audit 30%, npm-audit 48%) — evidence *for* the simplification pass, not
+  for writing more installer tests. Heavy tools are skipped by design.
+  Verdict: record.
 * **2026-11-23 — first public release v0.2.0.** What: main fast-forwarded to
   dev, annotated tag `v0.2.0`, Release workflow built and published via
   Trusted Publisher (PyPI pending publisher + GitHub `pypi` environment —
@@ -176,7 +200,8 @@ after, verdict, reason.
    `polycheck-0.2.0` (wheel + sdist) via trusted publishing; verified live at
    https://pypi.org/pypi/polycheck/json. `pipx install polycheck` works.
 9. Remaining D4 surface cuts (installer zoo → hints, MCP tool sprawl → 2
-   tools, sonarless → opt-in) — deliberate simplification pass.
+   tools, sonarless → opt-in) — deliberate simplification pass; the coverage
+   measurement above supports it (least-tested code = the cut targets).
 10. Real-world file walker: default exclude dirs (`.venv`, `node_modules`,
     `dist`) in adapters' `is_applicable`/file collection (plan 1.1/1.8).
 11. MCP progress notifications (spec-standard `notifications/progress`) for
