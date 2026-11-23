@@ -13,6 +13,26 @@ from .tools.base import Tool
 
 HEAVY_TOOLS = {"sonarless", "semgrep", "pip-audit", "npm-audit"}
 
+# Minimum findings each tool must report on its seeded synthetic repo
+# (_seed_repo plants defects for each of these). A tool that runs clean
+# here is silently broken — the exact false-confidence failure mode
+# polycheck exists to prevent — so the verifier reports it as
+# "missed-defects" instead of "no-findings". Tools without an entry keep
+# the permissive behavior until their seed is verified.
+_EXPECTED_FINDINGS: dict[str, int] = {
+    "ruff": 1,        # unused import in app.py
+    "mypy": 1,        # incompatible annotation in app.py
+    "vulture": 1,     # unused_helper
+    "deptry": 1,      # requests declared but never imported
+    "eslint": 1,      # unused variable in app.js
+    "tsc": 1,         # bad.ts type error
+    "gitleaks": 1,    # AWS key in secret.txt
+    "shellcheck": 1,  # unquoted $HOME in script.sh
+    "hadolint": 1,    # untagged FROM ubuntu
+    "actionlint": 1,  # unknown "runz:" key in ci.yml
+    "depcheck": 1,    # unused left-pad dependency
+}
+
 
 @dataclass(frozen=True)
 class ToolVerification:
@@ -130,6 +150,21 @@ def verify_one(
             message=f"{type(exc).__name__}: {exc}",
         )
 
+    expected = _EXPECTED_FINDINGS.get(tool_cls.name, 0)
+    if len(findings) < expected:
+        return ToolVerification(
+            tool=tool_cls.name,
+            status="missed-defects",
+            installed=True,
+            applicable=True,
+            findings=len(findings),
+            duration_sec=time.monotonic() - start,
+            message=(
+                f"expected >= {expected} findings on the seeded repo, "
+                f"got {len(findings)} — adapter is likely silently broken"
+            ),
+        )
+
     return ToolVerification(
         tool=tool_cls.name,
         status="ok" if findings else "no-findings",
@@ -204,7 +239,10 @@ export default [
         + "\n",
         encoding="utf-8",
     )
-    (repo / "app.js").write_text("const unused = 1;\nconsole.log(unused);\n", encoding="utf-8")
+    (repo / "app.js").write_text(
+        "const unused = 1;\n// intentionally unused: seeds an eslint no-unused-vars defect\n",
+        encoding="utf-8",
+    )
     (repo / "tsconfig.json").write_text(
         json.dumps(
             {
@@ -241,7 +279,10 @@ jobs:
     )
 
     if tool_name == "gitleaks":
+        # gitleaks allowlists the full AWS config key names
+        # (aws_access_key_id / aws_secret_access_key); use a key name its
+        # generic-api-key rule actually flags.
         (repo / "secret.txt").write_text(
-            "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n",
+            "aws_key = AKIAQW7YJ2KX9P3M4NB8\n",
             encoding="utf-8",
         )
