@@ -109,6 +109,13 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-23 — first public release v0.2.0.** What: main fast-forwarded to
+  dev, annotated tag `v0.2.0`, Release workflow built and published via
+  Trusted Publisher (PyPI pending publisher + GitHub `pypi` environment —
+  both configured manually by Philip). Verified: pypi.org JSON API returns
+  version 0.2.0 with wheel + sdist. Note: GitHub flagged Node.js 20
+  deprecation warnings on actions/checkout@v4, setup-python@v5,
+  upload-artifact@v4 — cosmetic; bump action majors when v5/v6 exist.
 * **2026-11-23 — baseline + diff + durable suppressions shipped (D2, extends
   5.3).** Hypothesis: the daily-driver gap is "only show me what's new". What
   landed: `polycheck baseline`, `run --diff` (fingerprint baseline in
@@ -164,8 +171,10 @@ after, verdict, reason.
 6. ~~README reframe (D3), release workflow (2.2), version 0.2.0~~ — done.
 7. ~~CI has landed (2.1)~~ — done 2026-11-23: full matrix green (ubuntu/macos/
    windows × 3.10/3.12/3.13 + selfcheck dogfood), run 45198067581.
-8. PyPI release (2.2): manual Trusted-Publisher setup + `v0.2.0` tag (see
-   manual steps above).
+8. ~~PyPI release (2.2)~~ — done 2026-11-23: `v0.2.0` tagged on main (dev
+   fast-forwarded, `e7f8827..03e8977`), Release workflow published
+   `polycheck-0.2.0` (wheel + sdist) via trusted publishing; verified live at
+   https://pypi.org/pypi/polycheck/json. `pipx install polycheck` works.
 9. Remaining D4 surface cuts (installer zoo → hints, MCP tool sprawl → 2
    tools, sonarless → opt-in) — deliberate simplification pass.
 10. Real-world file walker: default exclude dirs (`.venv`, `node_modules`,
