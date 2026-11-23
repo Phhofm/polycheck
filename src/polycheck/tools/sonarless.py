@@ -9,7 +9,6 @@ Requires Docker to be installed. Skips silently if Docker is absent.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -70,60 +69,18 @@ class SonarlessTool(Tool):
         return f"curl -sSL {SONARLESS_INSTALL_URL} | bash"
 
     def can_auto_install(self) -> bool:
-        return _docker_available() and shutil.which("curl") is not None
+        # Removed on purpose: installing by piping a remote script into
+        # bash from inside a tool is a supply-chain risk. The hint stays;
+        # the user runs it consciously.
+        return False
 
     def install(self) -> tuple[bool, str]:
-        """Install sonarless when Docker is available."""
+        """Decline automatic installation with the manual command."""
         if self.is_installed():
             return True, "sonarless is already installed"
-        if not _docker_available():
-            return False, (
-                "Docker is required for sonarless. Ask your LLM coding "
-                "assistant to help install Docker for this OS, then rerun polycheck."
-            )
-        if shutil.which("curl") is None:
-            return False, "curl is required to install sonarless"
-
-        cmd = f"curl -sSL {SONARLESS_INSTALL_URL} | bash"
-        try:
-            result = subprocess.run(
-                ["bash", "-lc", cmd],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-        except subprocess.TimeoutExpired:
-            return False, "sonarless install timed out after 300s"
-        except OSError as e:
-            return False, f"sonarless install could not run: {e}"
-
-        if result.returncode != 0:
-            output = (result.stderr or result.stdout).strip()[:300]
-            return False, f"sonarless install failed: {output}"
-        if self.is_installed():
-            return True, "installed sonarless"
-        local_install = Path.home() / ".sonarless" / "sonarless"
-        if not local_install.exists():
-            local_install = Path.home() / ".sonarless" / "makefile.sh"
-        if local_install.exists():
-            target_dir = _writable_install_dir()
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target = target_dir / "sonarless"
-            if local_install.name == "makefile.sh":
-                target.write_text(
-                    "#!/usr/bin/env bash\n"
-                    f"exec bash {local_install} \"$@\"\n",
-                    encoding="utf-8",
-                )
-                target.chmod(0o755)
-            else:
-                shutil.copy2(local_install, target)
-                target.chmod(0o755)
-            if self.is_installed():
-                return True, f"installed sonarless to {target}"
         return False, (
-            "sonarless install finished, but sonarless was not found on PATH. "
-            "Add ~/.sonarless to PATH or create the wrapper script from the README."
+            f"no automatic installer for sonarless (manual install recommended); "
+            f"run: {self.install_hint()} — Docker is required afterwards"
         )
 
     def run(self, repo: Path) -> list[Finding]:
@@ -223,16 +180,3 @@ def _docker_available() -> bool:
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
-
-
-def _writable_install_dir() -> Path:
-    """Return a writable directory that is likely on PATH."""
-    candidates = [str(Path.home() / ".local" / "bin")]
-    candidates.extend(str(Path(os.environ.get("PATH", ""))).split(os.pathsep))
-    for raw in candidates:
-        if not raw:
-            continue
-        path = Path(raw)
-        if path.exists() and os.access(path, os.W_OK):
-            return path
-    return Path.home() / ".local" / "bin"

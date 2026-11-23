@@ -248,9 +248,10 @@ The heavy set currently includes `sonarless`, `semgrep`, `pip-audit`, and
 
 - `sonarless` requires Docker and the `sonarless` binary. Its installer is
   Docker-aware and only runs when Docker is available.
-- `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are installed from
-  GitHub releases when polycheck can infer the correct OS/architecture asset.
-  Unsupported OS/architecture combinations are reported instead of guessed.
+- `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are not downloaded
+  by polycheck (no unverified binaries); install them via your package
+  manager (`brew`, `apt`, `scoop`, …) or their GitHub releases — the exact
+  hint is shown by `polycheck doctor` / `verify-tools`.
 - `semgrep` may download rules when using `--config=auto`.
 - `pip-audit` queries PyPI to audit Python dependencies.
 - `npm-audit` queries the npm registry to audit Node dependencies.
@@ -459,8 +460,9 @@ and queries the SonarQube API for per-file issues. It covers 30+
 languages for bugs, vulnerabilities, code smells, and security hotspots.
 
 - Requires **Docker** installed and running
-- Install when Docker is available: `curl -sSL https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash`
-- The guided MCP workflow offers to install sonarless automatically when Docker is available.
+- Install manually: `curl -sSL https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash`
+- polycheck never pipes remote scripts into a shell itself — it shows the
+  command above and you run it consciously
 - Web UI: `http://localhost:9234` (admin/Son@rless123)
 - Clean up: `sonarless docker-clean`
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from polycheck.finding import Category
-from polycheck.tools.base import Tool, _github_release_asset, build_install_command
+from polycheck.tools.base import Tool, build_install_command
 
 
 class _FakeTool(Tool):
@@ -87,26 +87,16 @@ def test_build_install_command_github_returns_url_not_shell_command():
     assert out is None
 
 
-def test_github_release_install_hint_and_capability():
+def test_github_release_tools_are_not_auto_installed():
+    """Polycheck deliberately does not download release binaries: the
+    install path points at package managers / the releases page."""
     tool = _GithubReleaseTool()
-    assert tool.can_auto_install() is True
-    assert "auto-install" in tool.install_hint()
-
-
-def test_github_release_asset_selection_by_os_arch():
-    assert _github_release_asset("gitleaks/gitleaks", "8.0.0", "linux", "x86_64") == (
-        "gitleaks_8.0.0_linux_x64.tar.gz"
-    )
-    assert _github_release_asset("actionlint/actionlint", "1.0.0", "darwin", "arm64") is None
-    assert _github_release_asset("rhysd/actionlint", "1.0.0", "darwin", "arm64") == (
-        "actionlint_1.0.0_darwin_arm64.tar.gz"
-    )
-    assert _github_release_asset("hadolint/hadolint", "2.0.0", "windows", "x86_64") == (
-        "hadolint-windows-x86_64.exe"
-    )
-    assert _github_release_asset("koalaman/shellcheck", "0.1.0", "linux", "x86_64") == (
-        "shellcheck-v0.1.0.linux.x86_64.tar.xz"
-    )
+    assert tool.can_auto_install() is False
+    assert "releases" in tool.install_hint()
+    ok, msg = tool.install()
+    assert ok is False
+    assert "no automatic installer" in msg
+    assert "github.com/gitleaks/gitleaks" in msg
 
 
 def test_build_install_command_unknown_kind():

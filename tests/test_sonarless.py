@@ -1,87 +1,33 @@
 """Tests for sonarless install behavior."""
 from __future__ import annotations
 
-import subprocess
-from typing import Any
-
 import pytest
 
 from polycheck.tools import sonarless
 from polycheck.tools.sonarless import SonarlessTool
 
 
-def test_sonarless_missing_tool_dict_marks_auto_installable(monkeypatch):
+def test_sonarless_missing_tool_dict_marks_manual_install(monkeypatch):
     from polycheck import mcp_server
-
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: True)
-    monkeypatch.setattr(sonarless.shutil, "which", lambda name: "/usr/bin/curl" if name == "curl" else None)
 
     payload = mcp_server._missing_tool_to_dict(SonarlessTool)
 
     assert payload["name"] == "sonarless"
-    assert payload["auto_installable"] is True
+    assert payload["auto_installable"] is False
+    assert "curl" in payload["install_hint"]
 
 
-def test_sonarless_install_requires_docker(monkeypatch):
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: False)
-    # Env-independent: patch is_installed so the test does not depend on
-    # whether sonarless happens to be installed on the host.
+def test_sonarless_install_is_manual_hint_only(monkeypatch):
+    """Installing by piping a remote script into bash is a supply-chain
+    risk; polycheck declines and hands the user the command instead."""
     monkeypatch.setattr(SonarlessTool, "is_installed", lambda self: False)
     monkeypatch.setattr(sonarless.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected run"))
 
     ok, message = SonarlessTool().install()
 
     assert ok is False
-    assert "Docker is required" in message
-
-
-def test_sonarless_install_runs_official_script(monkeypatch):
-    state: dict[str, Any] = {"installed": False, "calls": []}
-
-    def fake_which(name: str) -> str | None:
-        return "/usr/bin/curl" if name == "curl" else None
-
-    def fake_is_installed(self) -> bool:
-        return state["installed"]
-
-    def fake_run(argv, **kwargs):
-        state["calls"].append(argv)
-        state["installed"] = True
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: True)
-    monkeypatch.setattr(sonarless.shutil, "which", fake_which)
-    monkeypatch.setattr(SonarlessTool, "is_installed", fake_is_installed)
-    monkeypatch.setattr(sonarless.subprocess, "run", fake_run)
-
-    ok, message = SonarlessTool().install()
-
-    assert ok is True
-    assert message == "installed sonarless"
-    assert state["calls"][0] == [
-        "bash",
-        "-lc",
-        "curl -sSL https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash",
-    ]
-
-
-def test_sonarless_install_without_curl_fails(monkeypatch):
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: True)
-    monkeypatch.setattr(sonarless.shutil, "which", lambda name: None)
-
-    ok, message = SonarlessTool().install()
-
-    assert ok is False
-    assert "curl is required" in message
-
-
-def test_sonarless_can_auto_install_requires_docker_and_curl(monkeypatch):
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: True)
-    monkeypatch.setattr(sonarless.shutil, "which", lambda name: "/usr/bin/curl" if name == "curl" else None)
-
-    assert SonarlessTool().can_auto_install() is True
-
-    monkeypatch.setattr(sonarless, "_docker_available", lambda: False)
+    assert "no automatic installer" in message
+    assert "curl -sSL" in message
     assert SonarlessTool().can_auto_install() is False
 
 
