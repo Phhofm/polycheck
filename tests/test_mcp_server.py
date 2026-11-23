@@ -131,6 +131,7 @@ def test_handle_polycheck_returns_completed_when_no_findings_and_full_coverage(t
     assert payload["scan_coverage"]["coverage"] == "full"
 
 
+def test_handle_polycheck_rejects_escaping_report_dir(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
     (tmp_path / ".polycheck.yml").write_text(
@@ -267,7 +268,12 @@ def test_dispatch_routes_alias_to_guided_workflow(monkeypatch):
     from polycheck import mcp_server
 
     calls = []
-    monkeypatch.setattr(mcp_server, "_handle_polycheck", lambda args: calls.append(args) or ["ok"])
+
+    def fake_handle(args):
+        calls.append(args)
+        return ["ok"]
+
+    monkeypatch.setattr(mcp_server, "_handle_polycheck", fake_handle)
 
     assert mcp_server._dispatch_tool("polycheck.run", {"repo": "a"}) == ["ok"]
     assert mcp_server._dispatch_tool("polycheck", {"repo": "b"}) == ["ok"]

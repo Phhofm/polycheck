@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+from typing import Any
 
 import pytest
 
@@ -35,7 +36,7 @@ def test_sonarless_install_requires_docker(monkeypatch):
 
 
 def test_sonarless_install_runs_official_script(monkeypatch):
-    state = {"installed": False, "calls": []}
+    state: dict[str, Any] = {"installed": False, "calls": []}
 
     def fake_which(name: str) -> str | None:
         return "/usr/bin/curl" if name == "curl" else None
