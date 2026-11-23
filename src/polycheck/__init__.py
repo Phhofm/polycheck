@@ -15,5 +15,7 @@ The package is structured as:
 """
 from __future__ import annotations
 
-__version__ = "0.1.0"
+# Keep in sync with pyproject.toml and CHANGELOG.md —
+# tests/test_meta.py enforces it.
+__version__ = "0.2.1"
 __all__ = ["__version__"]

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1 (2026-11-23)
+
+Fixes:
+  * `polycheck --version` printed 0.1.0 in the 0.2.0 wheel (hardcoded
+    `__version__` missed in the version bump). A consistency test now
+    enforces pyproject.toml ↔ `__init__.py` ↔ CHANGELOG.md.
+
+Maintenance:
+  * GitHub Actions bumped to current majors (checkout v7, setup-python v7,
+    upload-artifact v7, download-artifact v8, gh-action-pypi-publish pinned
+    to v1.14.3) — clears the Node 20 deprecation warnings.
+  * Explicit least-privilege `permissions` on both workflows.
+  * Markdown report caps each rule at 5 example rows (with an exact
+    "and N more" count) so LLM triage reads bounded, relevant output.
+
 ## 0.2.0 (2026-11-23)
 
 Every bundled analyzer is now guarded by a seeded-defect verifier, and the

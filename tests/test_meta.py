@@ -1,17 +1,30 @@
 """Consistency guards for facts that live in more than one place."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_changelog_mentions_current_version():
-    from polycheck import __version__
+def test_version_is_consistent_across_pyproject_init_and_changelog():
+    import polycheck
 
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert f"## {__version__}" in changelog, (
-        f"CHANGELOG.md has no '## {__version__}' section; "
+
+    version = pyproject["project"]["version"]
+    assert polycheck.__version__ == version, (
+        "src/polycheck/__init__.py __version__ and pyproject.toml version "
+        "must match (the published wheel and `polycheck --version` disagree otherwise)"
+    )
+    assert f"## {version}" in changelog, (
+        f"CHANGELOG.md has no '## {version}' section; "
         "bump the changelog together with pyproject.toml"
     )
 
