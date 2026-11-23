@@ -10,6 +10,7 @@ mypy has no auto-fix; type errors are reported and the LLM triages.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -38,7 +39,6 @@ class MypyTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         cmd = ["mypy", "--no-error-summary", "--show-column", "."]
         # Allow mypy itself to be missing (linter venvs may not have it).
-        import shutil
         if shutil.which("mypy") is None:
             return []
         out = subprocess.run(

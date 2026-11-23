@@ -12,6 +12,7 @@ passed to vulture to silence those.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -37,7 +38,6 @@ class VultureTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         # vulture has a JSON output too, but the text format is easier
         # to read in the report. We use the text format.
-        import shutil
         if shutil.which("vulture") is None:
             return []
 
