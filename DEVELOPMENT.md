@@ -133,6 +133,21 @@ after, verdict, reason.
   pip-audit 30%, npm-audit 48%) — evidence *for* the simplification pass, not
   for writing more installer tests. Heavy tools are skipped by design.
   Verdict: record.
+* **2026-11-23 — eslint adapter verified end to end via local npm.** Metric:
+  `verify_tools(tools=['eslint'])` with eslint@latest installed into a scratch
+  npm prefix (`npm install --prefix /tmp/... eslint`, PATH-augmented — no
+  global install). Result: status `ok`, 1 finding on the seeded repo (the
+  unused-variable defect). The `_EXPECTED_FINDINGS["eslint"] = 1` expectation
+  is now machine-confirmed. Verdict: record.
+* **2026-11-23 — D4 refinement: sonarless opt-in via manual install.** With
+  the installer now hint-only, installing sonarless IS the deliberate opt-in;
+  running it by default when present is the correct behavior, so no separate
+  config flag was added (simpler than the original D4 plan).
+* **2026-11-23 — MCP progress notifications shipped.** Spec-standard:
+  `polycheck.run` emits `notifications/progress` (0.15 deps → 0.3 scan →
+  0.7 scan done → 0.9 reports) when the client passes a progressToken;
+  no token → no notifications. Wired via `_call_tool_with_progress`; the
+  MCP tool surface stays 2 tools.
 * **2026-11-23 — first public release v0.2.0.** What: main fast-forwarded to
   dev, annotated tag `v0.2.0`, Release workflow built and published via
   Trusted Publisher (PyPI pending publisher + GitHub `pypi` environment —

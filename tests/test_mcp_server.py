@@ -282,6 +282,116 @@ def test_dispatch_rejects_retired_tools(monkeypatch):
     assert calls == [{"repo": "a"}]
 
 
+def test_handle_polycheck_emits_progress_phases(tmp_path: Path, monkeypatch):
+    """The guided run reports phase progress (deps → scan → reports) so
+    MCP clients with a progress token can show live status."""
+    import json as _json
+
+    from polycheck import mcp_server
+    from polycheck.finding import Category, Finding, Severity
+    from polycheck.runner import ToolResult
+
+    finding = Finding(
+        tool="stub", rule="F401", severity=Severity.MEDIUM,
+        category=Category.LINT, message="unused import", file="a.py", line=1,
+    )
+    result = ToolResult(tool="stub", status="ok", findings=[finding], duration_sec=0.1)
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None):
+            return [finding], [result]
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {"missing_tools": [], "missing_system_dependencies": []},
+    )
+
+    phases: list[tuple[float, str | None]] = []
+
+    def collect(p: float, msg: str | None = None) -> None:
+        phases.append((p, msg))
+
+    response = mcp_server._handle_polycheck(
+        {"repo": str(tmp_path), "severity": "MEDIUM", "parallel": False},
+        progress=collect,
+    )
+    payload = _json.loads(response[0].text)
+    assert payload["status"] in ("completed", "needs_user_input")
+
+    assert len(phases) >= 3
+    floats = [p for p, _ in phases]
+    assert floats == sorted(floats)
+    assert any("scan" in (msg or "") for _, msg in phases)
+    assert any("report" in (msg or "") for _, msg in phases)
+
+
+def test_call_tool_sends_progress_notifications(monkeypatch):
+    """When the client passes a progressToken, the server emits MCP
+    progress notifications during the guided run."""
+    import asyncio
+    import types
+
+    from polycheck import mcp_server
+
+    def fake_handle(args, progress=None):
+        if progress:
+            progress(0.5, "halfway")
+        return ["ok"]
+
+    monkeypatch.setattr(mcp_server, "_handle_polycheck", fake_handle)
+
+    notifications: list[tuple[float, str | None]] = []
+
+    class _FakeSession:
+        async def send_progress_notification(self, token, progress, total=None, message=None):
+            notifications.append((progress, message))
+
+    class _FakeContext:
+        meta = types.SimpleNamespace(progressToken="tok-1")
+        session = _FakeSession()
+
+    class _FakeServer:
+        request_context = _FakeContext()
+
+    result = asyncio.run(
+        mcp_server._call_tool_with_progress(_FakeServer(), "polycheck.run", {"repo": "x"})
+    )
+
+    assert result == ["ok"]
+    assert (0.5, "halfway") in notifications
+    assert len(notifications) >= 1
+
+
+def test_call_tool_without_progress_token_skips_notifications(monkeypatch):
+    import asyncio
+
+    from polycheck import mcp_server
+
+    def fake_handle(args, progress=None):
+        return ["ok"]
+
+    monkeypatch.setattr(mcp_server, "_handle_polycheck", fake_handle)
+
+    class _FakeContext:
+        meta = None  # client did not request progress
+        session = None
+
+    class _FakeServer:
+        request_context = _FakeContext()
+
+    result = asyncio.run(
+        mcp_server._call_tool_with_progress(_FakeServer(), "polycheck.run", {"repo": "x"})
+    )
+
+    assert result == ["ok"]
+
+
 def test_diff_param_reports_only_new_findings(tmp_path: Path, monkeypatch):
     """diff:true filters findings to those newer than the baseline and
     carries known/new counts in the summary payload."""

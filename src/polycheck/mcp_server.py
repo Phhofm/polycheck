@@ -31,6 +31,7 @@ import json
 import shutil
 import subprocess
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -217,7 +218,7 @@ def run_server() -> None:
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict):
-        return _dispatch_tool(name, arguments)
+        return await _call_tool_with_progress(server, name, arguments)
 
     @server.list_resources()
     async def _list_resources():
@@ -469,7 +470,39 @@ def _handle_audit_run(arguments: dict) -> list:
     return [TextContent(type="text", text=json.dumps(summary, indent=2, default=str))]
 
 
-def _handle_polycheck(arguments: dict) -> list:
+async def _call_tool_with_progress(server, name: str, arguments: dict):
+    """Dispatch a tool call, emitting spec-standard MCP progress
+    notifications when the client requested them (``_meta.progressToken``).
+
+    Only ``polycheck.run`` reports progress — it is the one long-running
+    tool. Notifications are queued as tasks and awaited before the
+    result returns so ordering is preserved.
+    """
+    import asyncio
+
+    if name != "polycheck.run":
+        return _dispatch_tool(name, arguments)
+
+    ctx = server.request_context
+    token = ctx.meta.progressToken if ctx.meta else None
+    if token is None:
+        return _handle_polycheck(arguments)
+
+    pending: list[asyncio.Task] = []
+
+    def progress(progress_value: float, message: str | None = None) -> None:
+        pending.append(asyncio.create_task(
+            ctx.session.send_progress_notification(token, progress_value, None, message)
+        ))
+
+    try:
+        return _handle_polycheck(arguments, progress=progress)
+    finally:
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+
+def _handle_polycheck(arguments: dict, progress: Callable[[float, str | None], None] | None = None) -> list:
     """Run the guided workflow used by LLM coding assistants."""
     repo = _repo_from_arguments(arguments)
     if isinstance(repo, list):
@@ -486,6 +519,8 @@ def _handle_polycheck(arguments: dict) -> list:
     append_event(repo, run_id, {"event": "dependency_check_started"})
     dependency = _dependency_check(repo, cfg, tools=arguments.get("tools"))
     append_event(repo, run_id, {"event": "dependency_check_finished", **dependency})
+    if progress:
+        progress(0.15, "dependency check finished")
 
     if install_mode == "tools_only":
         append_event(repo, run_id, {"event": "install_started", "install_confirmed": install_confirmed})
@@ -499,6 +534,8 @@ def _handle_polycheck(arguments: dict) -> list:
         install_results = []
 
     append_event(repo, run_id, {"event": "scan_started", "severity": severity})
+    if progress:
+        progress(0.3, "scan started")
     cfg.severity_threshold = severity
     runner = Runner(repo=repo, config=cfg)
     findings, results = runner.run(
@@ -509,6 +546,8 @@ def _handle_polycheck(arguments: dict) -> list:
     findings = filter_by_severity(findings, cfg.severity_threshold)
     findings = apply_suppressions(findings, cfg.suppress)
     append_event(repo, run_id, {"event": "scan_finished", "total_findings": len(findings)})
+    if progress:
+        progress(0.7, "scan finished")
 
     diff_requested = bool(arguments.get("diff", False))
     baseline_info: dict | None = None
@@ -522,6 +561,8 @@ def _handle_polycheck(arguments: dict) -> list:
 
     for fmt in cfg.output.formats:
         written.extend(render_report(fmt, repo, findings, results, report_dir=out_dir))
+    if progress:
+        progress(0.9, "reports written")
 
     _LAST_RUN["report_dir"] = str(out_dir)
     _LAST_RUN["findings"] = [f.to_dict() for f in findings]

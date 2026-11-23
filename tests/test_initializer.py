@@ -230,3 +230,33 @@ def test_path_resolution_for_project_and_global(tmp_path: Path):
         )
         == home / ".claude.json"
     )
+
+
+def test_init_writes_parseable_configs_and_frontmatter(tmp_path: Path, monkeypatch):
+    """Characterization of the real onboarding output: the configs a
+    colleague receives must parse and carry the essentials."""
+    import re
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        app, ["init", "--host", "all", "--scope", "project", "--yes"]
+    )
+    assert result.exit_code == 0, result.output
+
+    for jsonc_name in ("kilo.jsonc", "opencode.jsonc"):
+        text = (tmp_path / jsonc_name).read_text(encoding="utf-8")
+        data = json.loads(re.sub(r"//[^\n]*", "", text))
+        command = data["mcp"]["polycheck"]["command"]
+        assert command == ["polycheck", "mcp"], jsonc_name
+
+    mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["polycheck"]["args"] == ["mcp"]
+
+    skill = (tmp_path / ".claude" / "skills" / "polycheck" / "SKILL.md").read_text(encoding="utf-8")
+    assert skill.startswith("---")
+    assert "name: polycheck" in skill
+
+    kilo_workflow = (tmp_path / ".kilo" / "commands" / "polycheck.md").read_text(encoding="utf-8")
+    assert "polycheck.run" in kilo_workflow
+    assert "diff: true" in kilo_workflow
+    assert "suppress:" in kilo_workflow

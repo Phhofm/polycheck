@@ -1,5 +1,9 @@
 # polycheck
 
+[![CI](https://github.com/Phhofm/polycheck/actions/workflows/ci.yml/badge.svg)](https://github.com/Phhofm/polycheck/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/polycheck)](https://pypi.org/project/polycheck/)
+[![Python](https://img.shields.io/pypi/pyversions/polycheck)](https://pypi.org/project/polycheck/)
+
 > **Let your LLM triage a verified report instead of hallucinating a review.**
 > polycheck runs the cheap, exhaustive static-analysis pass first
 > (linters, type-checkers, CVE scanners, secret scanners, SonarQube)
@@ -291,7 +295,7 @@ diagnostics, listings, explanations, and installs belong to the CLI.
 
 | Tool | Description |
 |------|-------------|
-| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. |
+| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. Emits spec-standard MCP progress notifications when the client requests them. |
 | `polycheck.audit_run` | Low-level scan primitive: report paths, dependency context, and a one-line summary. |
 
 ### Resources
