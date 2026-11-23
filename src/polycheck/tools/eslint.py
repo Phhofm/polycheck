@@ -43,9 +43,12 @@ class EslintTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("eslint") is None and shutil.which("npx") is None:
             return []
-        # Prefer the local binary if it exists; fall back to npx.
-        binary = "eslint" if shutil.which("eslint") else "npx"
-        cmd = [binary, "eslint", "--format=json", "--no-warn-ignored", "."]
+        # Prefer the local binary if it exists; fall back to npx (which
+        # needs the module name as its first argument).
+        if shutil.which("eslint"):
+            cmd = ["eslint", "--format=json", "--no-warn-ignored", "."]
+        else:
+            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", "."]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

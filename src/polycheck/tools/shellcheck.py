@@ -32,8 +32,17 @@ class ShellcheckTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("shellcheck") is None:
             return []
+        # shellcheck takes file arguments, not a directory. Collect the
+        # shell scripts we know about; nothing to check means no findings.
+        files = sorted(
+            str(p.relative_to(repo))
+            for p in repo.glob("**/*.sh")
+            if p.is_file()
+        )
+        if not files:
+            return []
         # Use -f gcc for parseable one-line findings.
-        cmd = ["shellcheck", "-f", "gcc", "--severity=style", "."]
+        cmd = ["shellcheck", "-f", "gcc", "--severity=style", *files]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

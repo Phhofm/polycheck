@@ -13,6 +13,23 @@ from pathlib import Path
 from ..finding import Category, Finding, Severity
 from .base import Tool
 
+# Bug-shaped rules that survive the default MEDIUM severity filter:
+# F821 undefined name and F811 redefinition break at runtime.
+_HIGH_RULES = {"F821", "F811"}
+# Comparison/exception handling mistakes (== None, bare except, lambda
+# assignment, ambiguous names): real bug shapes, but often intentional.
+_MEDIUM_RULES = {"E711", "E712", "E713", "E714", "E722", "E731", "E741"}
+
+
+def _severity_for(code: str) -> Severity:
+    if code in _HIGH_RULES:
+        return Severity.HIGH
+    if code in _MEDIUM_RULES:
+        return Severity.MEDIUM
+    if code.startswith("N"):
+        return Severity.INFO  # pep8-naming is style
+    return Severity.LOW
+
 
 class RuffTool(Tool):
     name = "ruff"
@@ -43,8 +60,7 @@ class RuffTool(Tool):
                 Finding(
                     tool=self.name,
                     rule=item.get("code", "?"),
-                    severity=Severity.INFO if item.get("code", "").startswith("N")
-                    else Severity.LOW,
+                    severity=_severity_for(item.get("code", "")),
                     category=self.category,
                     message=item.get("message", ""),
                     file=item.get("filename"),

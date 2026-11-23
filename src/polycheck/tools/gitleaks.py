@@ -1,14 +1,16 @@
-"""gitleaks — find secrets in git history and working tree.
+"""gitleaks — find secrets in the working tree.
 
-We run ``gitleaks detect --report-format json --no-git`` which only
-scans the working tree (faster, no clone dependency). gitleaks emits
-a JSON array of findings.
+We run ``gitleaks detect --no-git`` which scans the working tree only
+(faster, no clone dependency), writing its JSON report to a temp file
+via ``--report-path`` (stdout behavior differs between gitleaks
+versions). gitleaks exits 1 when leaks are found; that's normal.
 """
 from __future__ import annotations
 
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
@@ -28,22 +30,33 @@ class GitleaksTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("gitleaks") is None:
             return []
-        cmd = [
-            "gitleaks", "detect",
-            "--report-format=json",
-            "--no-banner",
-            "--source", str(repo),
-        ]
-        out = subprocess.run(
-            cmd, cwd=repo, capture_output=True, text=True, timeout=300
-        )
-        # gitleaks exits 1 when leaks are found; that's normal.
-        if not out.stdout.strip():
-            return []
-        try:
-            data = json.loads(out.stdout)
-        except json.JSONDecodeError:
-            return []
+        with tempfile.TemporaryDirectory(prefix="polycheck-gitleaks-") as tmp_name:
+            report_path = Path(tmp_name) / "gitleaks-report.json"
+            cmd = [
+                "gitleaks", "detect",
+                "--report-format", "json",
+                "--report-path", str(report_path),
+                "--no-banner",
+                "--no-git",
+                "--source", str(repo),
+            ]
+            out = subprocess.run(
+                cmd, cwd=repo, capture_output=True, text=True, timeout=300
+            )
+            # Exit 1 = leaks found, 0 = clean. Anything else is a real
+            # failure — surface it so the runner reports an error instead
+            # of silently reporting "no findings".
+            if out.returncode not in (0, 1):
+                detail = (out.stderr or out.stdout).strip()[:200]
+                raise RuntimeError(f"gitleaks exited {out.returncode}: {detail}")
+            if not report_path.exists():
+                return []
+            try:
+                data = json.loads(report_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                return []
+            if not isinstance(data, list):
+                return []
 
         findings: list[Finding] = []
         for item in data:
