@@ -282,26 +282,16 @@ as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
 
 ## MCP Server Reference
 
-polycheck ships an MCP server with one primary guided workflow tool,
-`polycheck.run`, plus a compatibility alias and several advanced/low-level
-tools.
+polycheck ships an MCP server with a deliberately slim surface: **two
+tools**. Fewer tools means the LLM reliably picks the right one —
+diagnostics, listings, explanations, and installs belong to the CLI.
 
-### Primary tool
-
-| Tool | Description |
-|------|-------------|
-| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. Do not call `polycheck.doctor` manually for normal runs. |
-| `polycheck` | Compatibility alias for `polycheck.run`. |
-
-### Advanced tools
+### Tools
 
 | Tool | Description |
 |------|-------------|
-| `polycheck.audit_run` | Run the low-level scan primitive on a repo. Returns report paths, dependency context, and summary. |
-| `polycheck.list_tools` | List every analyzer polycheck knows about and whether it is installed. |
-| `polycheck.explain_finding` | Explain a category (CVE, SECURITY, LINT, etc.) and how to triage it. |
-| `polycheck.doctor` | Check Docker, sonarless, and all analyzers. Non-fatal by default. |
-| `polycheck.install` | Install missing tools (all or specific ones). |
+| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. |
+| `polycheck.audit_run` | Low-level scan primitive: report paths, dependency context, and a one-line summary. |
 
 ### Resources
 
@@ -311,6 +301,9 @@ tools.
 | `polycheck://triage/prompt` | The interactive LLM triage prompt. |
 | `polycheck://findings/markdown` | Last run's markdown report. |
 | `polycheck://findings/json` | Last run's JSON report. |
+
+CLI equivalents of the retired MCP tools: `polycheck doctor`,
+`polycheck install`, `polycheck list-tools`, `polycheck explain`.
 
 ---
 

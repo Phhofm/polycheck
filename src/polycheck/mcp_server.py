@@ -74,8 +74,9 @@ DEPS, CVE, and SECRETS findings — including results from SonarQube
 ## Workflow
 
 1. For normal polycheck runs, call the guided MCP tool `polycheck.run`
-   first. Do not manually call `polycheck.doctor` or `polycheck.install`
-   unless the user explicitly asks for diagnostics.
+   first. Diagnostics and installs are built into its guided flow; use
+   the CLI (`polycheck doctor`, `polycheck install`) only if the user
+   explicitly asks.
 2. Read the returned `status`, `next_action`, and `scan_coverage`.
 3. If `status` is `needs_user_input` and the tool reports missing
    analyzers, ask the user whether to approve installation.
@@ -123,8 +124,8 @@ If the report mentions missing tools or the user asks about installing them:
    `install_mode: "tools_only"`.
 2. Ask the user to approve analyzer installation before setting
    `install_confirmed: true`.
-3. Do not manually chain `polycheck.doctor` and `polycheck.install` for
-   the normal workflow. Use those only for debugging or advanced use.
+3. The MCP surface has no separate doctor/install tools; for manual
+   diagnostics use the CLI: `polycheck doctor`, `polycheck install`.
 4. For tools requiring manual installation, such as Docker for sonarless:
    - **Docker**: Ask your LLM coding assistant to help install Docker
      for this OS. Common options:
@@ -152,6 +153,23 @@ fix if one exists.
 
 Ignore findings that are clearly tooling noise (e.g. "Library stubs
 not installed for X" from mypy — that's the lint venv, not the project).
+
+Category notes:
+
+- LINT: style + simple bug shapes, mostly auto-fixable; prefer the
+  analyzer's --fix, suppress inline only when the rule truly doesn't fit.
+- TYPE: may be real bugs or env noise ("library stubs not installed");
+  stubs noise is FALSE POSITIVE for this run plus a mypy requirement.
+- SECURITY: high signal, not always bugs; ask whether the dangerous
+  operation is reachable with attacker-controlled input.
+- DEAD_CODE: mostly REAL SMELL, not REAL BUG; many false positives in
+  dynamic or plugin code; DEFER if removal would break tests.
+- DEPS: add the missing dependency or remove the unused one; "dev-only"
+  imports belong in optional-dependencies.
+- CVE: upgrade to the fix version; if none exists, DEFER with a
+  runtime mitigation.
+- SECRETS: rotate the credential immediately, scrub history, then
+  allowlist only after rotation.
 
 Do not re-read the source files unless a finding's message is genuinely
 ambiguous. Trust the static report. Read the full markdown report with
@@ -235,8 +253,8 @@ _WORKFLOW_TOOL_DESCRIPTION = (
     "Primary guided workflow entrypoint for normal use. This is the "
     "only tool most LLMs should call for polycheck. It checks dependencies, "
     "offers approved analyzer installs, runs the scan, writes reports, "
-    "returns coverage metadata, and returns next_action. Do not call "
-    "polycheck.doctor or polycheck.install manually unless debugging."
+    "supports diff mode against a baseline (diff: true), and returns "
+    "coverage metadata and next_action."
 )
 
 
@@ -286,12 +304,17 @@ def _workflow_tool(name: str):
 
 
 def _build_tool_definitions():
-    """Build the list of MCP tool definitions."""
+    """Build the list of MCP tool definitions.
+
+    Deliberately slim: two tools. Diagnostics, listings, explanations,
+    and installs belong to the CLI (`polycheck doctor`, `polycheck
+    install`, `polycheck list-tools`); fewer tools means LLMs pick the
+    right one reliably.
+    """
     from mcp.types import Tool
 
     return [
         _workflow_tool("polycheck.run"),
-        _workflow_tool("polycheck"),
         Tool(
             name="polycheck.audit_run",
             description=(
@@ -317,67 +340,18 @@ def _build_tool_definitions():
                 "required": ["repo"],
             },
         ),
-        Tool(
-            name="polycheck.list_tools",
-            description="List every analyzer polycheck knows about.",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="polycheck.explain_finding",
-            description=(
-                "Explain what a category of finding means and how to "
-                "triage it (e.g. 'CVE', 'DEAD_CODE', 'LINT')."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "category": {
-                        "type": "string",
-                        "enum": [c.value for c in Category],
-                    },
-                    "tool": {"type": "string", "description": "Optional tool name"},
-                },
-                "required": ["category"],
-            },
-        ),
-        Tool(
-            name="polycheck.doctor",
-            description=(
-                "Check which tools are installed and which are missing. "
-                "Reports Docker status (needed for sonarless)."
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="polycheck.install",
-            description=(
-                "Install missing tools. Without arguments, installs all "
-                "missing tools. Pass specific tool names to install only those."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "tools": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Specific tool names to install (default: all missing)",
-                    },
-                },
-            },
-        ),
     ]
 
 
 def _dispatch_tool(name: str, arguments: dict):
-    """Dispatch an MCP tool call to the appropriate handler."""
+    """Dispatch an MCP tool call to the appropriate handler.
+
+    Deliberately slim (see _build_tool_definitions); unknown names —
+    including tools retired in favor of their CLI equivalents — raise.
+    """
     handlers = {
         "polycheck.run": _handle_polycheck,
-        "polycheck": _handle_polycheck,
         "polycheck.audit_run": _handle_audit_run,
-        "polycheck.list_tools": lambda _: _handle_list_tools(),
-        "polycheck.explain_finding": _handle_explain,
-        "polycheck.doctor": lambda _: _handle_doctor(),
-        "polycheck.install": _handle_install,
     }
     handler = handlers.get(name)
     if handler is None:
@@ -839,70 +813,6 @@ def _next_action(
     return ""
 
 
-def _handle_list_tools() -> list:
-    rows = []
-    for cls in default_registry.all():
-        inst = cls()
-        installed = inst.is_installed()
-        rows.append({
-            "name": cls.name,
-            "category": cls.category.value,
-            "languages": cls.languages,
-            "universal": cls.universal,
-            "installed": installed,
-            "version": inst.version() if installed else None,
-            "install_hint": "" if installed else inst.install_hint(),
-        })
-    return [TextContent(type="text", text=json.dumps(rows, indent=2))]
-
-
-def _handle_explain(arguments: dict) -> list:
-    cat = arguments.get("category", "").upper()
-    tool = arguments.get("tool")
-    text = _CATEGORY_HELP.get(cat, f"No help for category: {cat}")
-    if tool:
-        cls = default_registry.get(tool)
-        if cls is None:
-            text += f"\n\nNote: unknown tool '{tool}'."
-        else:
-            inst = cls()
-            text += f"\n\nFor {tool}, run: `{inst.install_hint()}`."
-    return [TextContent(type="text", text=text)]
-
-
-def _handle_doctor() -> list:
-    """Check Docker, sonarless, and all registered tools."""
-    rows = []
-
-    # Docker check
-    docker_status = _check_docker()
-    rows.append(docker_status)
-
-    # sonarless check
-    sonarless_ok = shutil.which("sonarless") is not None
-    rows.append({
-        "name": "sonarless",
-        "status": _STATUS_INSTALLED if sonarless_ok else _STATUS_NOT_FOUND,
-        "note": "" if sonarless_ok else (
-            "Install: curl -s https://raw.githubusercontent.com/gitricko/sonarless/main/install.sh | bash"
-        ),
-    })
-
-    # All registered tools
-    for cls in default_registry.all():
-        inst = cls()
-        installed = inst.is_installed()
-        rows.append({
-            "name": cls.name,
-            "status": _STATUS_INSTALLED if installed else _STATUS_NOT_FOUND,
-            "version": inst.version() if installed else None,
-            "languages": cls.languages,
-            "universal": cls.universal,
-            "note": "" if installed else f"Install: {inst.install_hint()}",
-        })
-
-    return [TextContent(type="text", text=json.dumps(rows, indent=2))]
-
 
 def _check_docker() -> dict:
     """Check if Docker is installed and running."""
@@ -927,68 +837,3 @@ def _check_docker() -> dict:
         "Install Docker: https://docs.docker.com/get-docker/"
     )
     return {"name": "docker", "status": status, "note": note}
-
-
-def _handle_install(arguments: dict) -> list:
-    """Install missing tools."""
-    tools_filter = arguments.get("tools")
-    results = []
-
-    for cls in default_registry.all():
-        if tools_filter and cls.name not in tools_filter:
-            continue
-        inst = cls()
-        if inst.is_installed():
-            results.append({"name": cls.name, "installed": True, "message": "already installed"})
-            continue
-        success, message = inst.install()
-        results.append({"name": cls.name, "installed": success, "message": message})
-
-    return [TextContent(type="text", text=json.dumps(results, indent=2))]
-
-
-_CATEGORY_HELP = {
-    "LINT": (
-        "LINT findings are style + simple bug-shape rules. Mostly auto-fixable. "
-        "Most are LOW/INFO. Triage: prefer the analyzer's --fix, or suppress "
-        "with an inline directive if the rule genuinely doesn't fit."
-    ),
-    "TYPE": (
-        "TYPE findings are static type errors. Usually HIGH. They may be real "
-        "bugs (passing a string to a function expecting int) or env noise "
-        "(missing library stubs in the lint venv). Triage: read the message; "
-        "if it says 'library stubs not installed' or 'cannot find "
-        "implementation', mark FALSE POSITIVE for *this run* and add the "
-        "package to your mypy requirements."
-    ),
-    "SECURITY": (
-        "SECURITY findings are pattern-based bugs, vulnerabilities, and "
-        "security hotspots. Many are HIGH. They have a high signal but not "
-        "all are bugs (e.g. 'use of MD5' is a smell, not always a bug). "
-        "Triage: for each, ask 'is the dangerous operation actually "
-        "reachable with attacker-controlled input?'"
-    ),
-    "DEAD_CODE": (
-        "DEAD_CODE findings are symbols not called from anywhere. Mostly LOW. "
-        "Many are false positives in dynamic or plugin code. Triage: prefer "
-        "REAL SMELL over REAL BUG; if removing breaks tests, mark DEFERRED."
-    ),
-    "DEPS": (
-        "DEPS findings are dependency hygiene (declared but unused, or used "
-        "but undeclared). MEDIUM. Triage: add the missing dep to pyproject or "
-        "remove the unused one. 'dev-only' findings mean the import happens "
-        "in test code; declare under [project.optional-dependencies.test]."
-    ),
-    "CVE": (
-        "CVE findings are known vulnerabilities in a dependency. CRITICAL. "
-        "Triage: upgrade to the fix version listed in the finding. If no fix "
-        "exists, mark DEFERRED and add a runtime mitigation (e.g. input "
-        "validation)."
-    ),
-    "SECRETS": (
-        "SECRETS findings are leaked credentials. CRITICAL. Triage: rotate "
-        "the secret immediately, remove from git history (git filter-repo), "
-        "and add a gitleaks:allow directive only after the rotation is "
-        "complete."
-    ),
-}

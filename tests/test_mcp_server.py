@@ -250,21 +250,18 @@ def test_dependency_check_scopes_system_dependency_to_requested_tools(tmp_path: 
     assert dependency["missing_system_dependencies"] == []
 
 
-def test_tool_definitions_include_primary_workflow_tool_and_alias():
+def test_tool_definitions_are_slim_two_tools():
     from polycheck import mcp_server
 
     tools = {tool.name: tool for tool in mcp_server._build_tool_definitions()}
 
-    assert "polycheck.run" in tools
-    assert "polycheck" in tools
-    assert "polycheck.audit_run" in tools
-    assert "polycheck.list_tools" in tools
-    assert "polycheck.doctor" in tools
-    assert "Do not call polycheck.doctor" in tools["polycheck.run"].description
-    assert "Compatibility alias" not in tools["polycheck.run"].description
+    assert set(tools) == {"polycheck.run", "polycheck.audit_run"}
+    assert "polycheck.doctor" not in tools["polycheck.run"].description
 
 
-def test_dispatch_routes_alias_to_guided_workflow(monkeypatch):
+def test_dispatch_rejects_retired_tools(monkeypatch):
+    import pytest
+
     from polycheck import mcp_server
 
     calls = []
@@ -276,8 +273,13 @@ def test_dispatch_routes_alias_to_guided_workflow(monkeypatch):
     monkeypatch.setattr(mcp_server, "_handle_polycheck", fake_handle)
 
     assert mcp_server._dispatch_tool("polycheck.run", {"repo": "a"}) == ["ok"]
-    assert mcp_server._dispatch_tool("polycheck", {"repo": "b"}) == ["ok"]
-    assert calls == [{"repo": "a"}, {"repo": "b"}]
+    assert mcp_server._dispatch_tool("polycheck.audit_run", {"repo": "a"})
+
+    for retired in ("polycheck", "polycheck.doctor", "polycheck.install",
+                    "polycheck.list_tools", "polycheck.explain_finding"):
+        with pytest.raises(ValueError, match="Unknown tool"):
+            mcp_server._dispatch_tool(retired, {"repo": "x"})
+    assert calls == [{"repo": "a"}]
 
 
 def test_diff_param_reports_only_new_findings(tmp_path: Path, monkeypatch):
