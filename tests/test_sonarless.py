@@ -23,6 +23,9 @@ def test_sonarless_missing_tool_dict_marks_auto_installable(monkeypatch):
 
 def test_sonarless_install_requires_docker(monkeypatch):
     monkeypatch.setattr(sonarless, "_docker_available", lambda: False)
+    # Env-independent: patch is_installed so the test does not depend on
+    # whether sonarless happens to be installed on the host.
+    monkeypatch.setattr(SonarlessTool, "is_installed", lambda self: False)
     monkeypatch.setattr(sonarless.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected run"))
 
     ok, message = SonarlessTool().install()
