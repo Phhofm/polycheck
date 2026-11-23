@@ -16,10 +16,12 @@ from pathlib import Path
 from ..finding import Category, Finding, Severity
 from .base import Tool
 
-# mypy's "file:line: severity: message" line. The optional error code
-# in brackets is parsed separately.
+# mypy's "file:line[:col]: severity: message" line. The optional error
+# code in brackets is parsed separately. The column is optional because
+# mypy only emits it with --show-column, which we pass.
 _MYPY_LINE = re.compile(
-    r"^(?P<file>[^:]+):(?P<line>\d+):(?:\s*)?(?P<severity>error|warning|note):\s*"
+    r"^(?P<file>[^:]+):(?P<line>\d+)(?::(?P<column>\d+))?:\s*"
+    r"(?P<severity>error|warning|note):\s*"
     r"(?P<message>.*?)(?:\s*\[(?P<code>[^\]]+)\])?\s*$"
 )
 
@@ -64,6 +66,7 @@ class MypyTool(Tool):
             msg = m.group("message")
             if "Cannot find implementation" in msg or "Library stubs not installed" in msg:
                 severity = Severity.LOW
+            column_text = m.group("column")
             findings.append(
                 Finding(
                     tool="mypy",
@@ -73,7 +76,7 @@ class MypyTool(Tool):
                     message=msg,
                     file=m.group("file"),
                     line=int(m.group("line")),
-                    column=None,
+                    column=int(column_text) if column_text else None,
                     fixable=False,
                     doc_url=f"https://mypy.readthedocs.io/en/stable/_refs.html#code-{m.group('code') or 'unknown'}",
                     raw={"line": raw},

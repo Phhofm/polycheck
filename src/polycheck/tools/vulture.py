@@ -51,8 +51,10 @@ class VultureTool(Tool):
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )
-        # vulture exits 1 when findings exist; 0 when none; 2 on error.
-        if out.returncode >= 2:
+        # vulture exits with the *number of findings* (capped), so 0 means
+        # clean, >=1 means findings exist — the exit code carries no error
+        # signal. Parse stdout whenever there is any.
+        if not out.stdout.strip():
             return []
         return self._parse(out.stdout)
 

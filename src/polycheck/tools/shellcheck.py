@@ -15,7 +15,7 @@ from .base import Tool
 
 _SHELLCHECK_LINE = re.compile(
     r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*"
-    r"(?P<severity>error|warning|info|style):\s*"
+    r"(?P<severity>error|warning|note|info|style):\s*"
     r"(?P<message>.*?)(?:\s*\[(?P<code>SC\d+)\])?\s*$"
 )
 
@@ -58,6 +58,7 @@ class ShellcheckTool(Tool):
             severity = {
                 "error": Severity.HIGH,
                 "warning": Severity.MEDIUM,
+                "note": Severity.LOW,
                 "info": Severity.LOW,
                 "style": Severity.INFO,
             }.get(m.group("severity"), Severity.LOW)

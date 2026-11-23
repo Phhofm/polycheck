@@ -190,3 +190,234 @@ def test_ruff_severity_mapping_ranks_bugs_above_style(monkeypatch, tmp_path: Pat
     assert by_rule["E722"] is Severity.MEDIUM
     assert by_rule["N801"] is Severity.INFO
     assert by_rule["E501"] is Severity.LOW
+
+
+# --- parsers verified against real tool output (mypy/shellcheck/vulture/
+# --- deptry were silently returning nothing before these fixes)
+
+
+def test_mypy_parses_show_column_output(monkeypatch, tmp_path: Path):
+    from polycheck.tools.mypy import MypyTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.mypy.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 1,
+            stdout="app.py:3:10: error: Incompatible types in assignment "
+                   '(expression has type "str", variable has type "int")  [assignment]\n',
+            stderr="",
+        ),
+    )
+
+    findings = MypyTool().run(tmp_path)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule == "assignment"
+    assert f.severity is Severity.HIGH
+    assert f.file == "app.py"
+    assert f.line == 3
+    assert f.column == 10
+
+
+def test_shellcheck_parses_gcc_note_level(monkeypatch, tmp_path: Path):
+    (tmp_path / "script.sh").write_text("echo $HOME\n")
+    monkeypatch.setattr(
+        "polycheck.tools.shellcheck.shutil.which",
+        lambda name: "/usr/bin/shellcheck" if name == "shellcheck" else None,
+    )
+    monkeypatch.setattr(
+        "polycheck.tools.shellcheck.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 1,
+            stdout="script.sh:2:6: note: Double quote to prevent globbing "
+                   "and word splitting. [SC2086]\n",
+            stderr="",
+        ),
+    )
+
+    findings = ShellcheckTool().run(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].rule == "SC2086"
+    assert findings[0].severity is Severity.LOW
+    assert findings[0].line == 2
+
+
+def test_vulture_parses_output_despite_finding_count_exit_code(
+    monkeypatch, tmp_path: Path,
+):
+    from polycheck.tools.vulture import VultureTool
+
+    # vulture exits with the number of findings (3 here), not 0/1.
+    monkeypatch.setattr(
+        "polycheck.tools.vulture.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 3,
+            stdout="app.py:1: unused import 'os' (90% confidence)\n"
+                   "app.py:3: unused variable 'x' (60% confidence)\n"
+                   "app.py:5: unused function 'unused_helper' (60% confidence)\n",
+            stderr="",
+        ),
+    )
+
+    findings = VultureTool().run(tmp_path)
+
+    assert len(findings) == 3
+    assert findings[0].rule == "unused-import"
+    assert findings[2].message == "Unused function 'unused_helper'"
+
+
+def test_tsc_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path):
+    from polycheck.tools.tsc import TscTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.tsc.shutil.which",
+        lambda name: "/usr/local/bin/tsc" if name == "tsc" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.tsc.subprocess.run", fake_run)
+
+    TscTool().run(tmp_path)
+
+    assert captured["cmd"] == ["tsc", "--noEmit", "--pretty", "false"]
+
+
+def test_tsc_parses_real_output_format(monkeypatch, tmp_path: Path):
+    from polycheck.tools.tsc import TscTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.tsc.shutil.which",
+        lambda name: "/usr/local/bin/tsc" if name == "tsc" else None,
+    )
+    # Verbatim line from `tsc --noEmit --pretty false` on bad.ts.
+    monkeypatch.setattr(
+        "polycheck.tools.tsc.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 2,
+            stdout="bad.ts(1,7): error TS2322: Type 'string' is not "
+                   "assignable to type 'number'.\n",
+            stderr="",
+        ),
+    )
+
+    findings = TscTool().run(tmp_path)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule == "TS2322"
+    assert f.severity is Severity.HIGH
+    assert f.file == "bad.ts"
+    assert f.line == 1
+    assert f.column == 7
+
+
+def test_depcheck_parses_heading_and_bullet_format(monkeypatch, tmp_path: Path):
+    from polycheck.tools.depcheck import DepcheckTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.depcheck.shutil.which",
+        lambda name: "/usr/local/bin/depcheck" if name == "depcheck" else None,
+    )
+    monkeypatch.setattr(
+        "polycheck.tools.depcheck.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 0,
+            stdout="Unused dependencies\n* left-pad\nUnused devDependencies\n"
+                   "* eslint\n* typescript\n",
+            stderr="",
+        ),
+    )
+
+    findings = DepcheckTool().run(tmp_path)
+
+    assert len(findings) == 3
+    assert findings[0].rule == "depcheck-unused"
+    assert findings[0].file == "left-pad"
+    assert findings[1].file == "eslint"
+
+
+def test_deptry_reads_stderr_findings(monkeypatch, tmp_path: Path):
+    from polycheck.tools.deptry import DeptryTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.deptry.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 1, stdout="Scanning 1 file...\n",
+            stderr="pyproject.toml: DEP002 'requests' defined as a dependency "
+                   "but not used in the codebase\n",
+        ),
+    )
+
+    findings = DeptryTool().run(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].rule == "DEP002"
+
+
+def test_knip_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path):
+    from polycheck.tools.knip import KnipTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.knip.shutil.which",
+        lambda name: "/usr/local/bin/knip" if name == "knip" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.knip.subprocess.run", fake_run)
+
+    KnipTool().run(tmp_path)
+
+    assert captured["cmd"] == ["knip", "--reporter=json", "--no-progress"]
+
+
+def test_depcheck_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path):
+    from polycheck.tools.depcheck import DepcheckTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.depcheck.shutil.which",
+        lambda name: "/usr/local/bin/depcheck" if name == "depcheck" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.depcheck.subprocess.run", fake_run)
+
+    DepcheckTool().run(tmp_path)
+
+    assert captured["cmd"] == ["depcheck", ".", "-q", "--no-dev"]
+
+
+def test_deptry_parses_file_level_findings(monkeypatch, tmp_path: Path):
+    from polycheck.tools.deptry import DeptryTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.deptry.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(
+            cmd, 1,
+            stdout="pyproject.toml: DEP002 'requests' defined as a dependency "
+                   "but not used in the codebase\n",
+            stderr="",
+        ),
+    )
+
+    findings = DeptryTool().run(tmp_path)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule == "DEP002"
+    assert f.file == "pyproject.toml"
+    assert f.line is None
+    assert "requests" in f.message

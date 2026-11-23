@@ -17,10 +17,14 @@ from pathlib import Path
 from ..finding import Category, Finding, Severity
 from .base import Tool
 
+# File-level findings (e.g. DEP002) print "file: DEPxxx 'name' ...";
+# code-level findings (e.g. DEP001) print "file:line:col: DEPxxx ...".
+# Line and column are therefore optional groups.
 _DEPTRY_LINE = re.compile(
-    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s*"
-    r"(?P<code>DEP\d+)\s*"
-    r"'(?P<name>[^']+)'\s*(?P<rest>.*)$"
+    r"^(?P<file>[^:]+):"
+    r"(?:(?P<line>\d+):(?:(?P<col>\d+):)?)?"
+    r"\s*(?P<code>DEP\d+)\s*"
+    r"'(?P<name>[^']+)'\s*(?P<rest>.+)$"
 )
 
 
@@ -39,8 +43,9 @@ class DeptryTool(Tool):
         out = subprocess.run(
             ["deptry", "."], cwd=repo, capture_output=True, text=True, timeout=300
         )
-        # deptry exits non-zero when findings exist.
-        return self._parse(out.stdout)
+        # deptry exits non-zero when findings exist and prints them to
+        # stderr (stdout carries progress notes only).
+        return self._parse(out.stdout + "\n" + out.stderr)
 
     @staticmethod
     def _parse(text: str) -> list[Finding]:
@@ -59,16 +64,18 @@ class DeptryTool(Tool):
                 "DEP003": Severity.LOW,     # dev-only
                 "DEP004": Severity.LOW,     # optional-only
             }.get(m.group("code"), Severity.MEDIUM)
+            line_text = m.group("line")
+            col_text = m.group("col")
             findings.append(
                 Finding(
                     tool="deptry",
                     rule=m.group("code"),
                     severity=severity,
                     category=Category.DEPS,
-                    message=f"Dependency issue: {m.group('rest').strip()}",
+                    message=f"{m.group('name')}: {m.group('rest').strip()}",
                     file=m.group("file"),
-                    line=int(m.group("line")),
-                    column=int(m.group("col")),
+                    line=int(line_text) if line_text else None,
+                    column=int(col_text) if col_text else None,
                     fixable=False,
                     raw={"line": clean},
                 )

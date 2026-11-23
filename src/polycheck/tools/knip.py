@@ -45,8 +45,10 @@ class KnipTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("knip") is None and shutil.which("npx") is None:
             return []
-        binary = "knip" if shutil.which("knip") else "npx"
-        cmd = [binary, "knip", "--reporter=json", "--no-progress"]
+        if shutil.which("knip"):
+            cmd = ["knip", "--reporter=json", "--no-progress"]
+        else:
+            cmd = ["npx", "knip", "--reporter=json", "--no-progress"]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

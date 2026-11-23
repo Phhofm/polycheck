@@ -19,8 +19,7 @@ from .base import Tool
 
 _TSC_LINE = re.compile(
     r"^(?P<file>[^:(][^:]*?)\((?P<line>\d+),(?P<col>\d+)\):\s*"
-    r"(?P<severity>error|warning|info):\s*"
-    r"(?P<code>TS\d+):\s*"
+    r"(?P<severity>error|warning|info)\s+(?P<code>TS\d+):\s*"
     r"(?P<message>.*)$"
 )
 
@@ -37,8 +36,12 @@ class TscTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("tsc") is None and shutil.which("npx") is None:
             return []
-        binary = "tsc" if shutil.which("tsc") else "npx"
-        cmd = [binary, "tsc", "--noEmit", "--pretty", "false"]
+        # Prefer the local binary if it exists; fall back to npx (which
+        # needs the module name as its first argument).
+        if shutil.which("tsc"):
+            cmd = ["tsc", "--noEmit", "--pretty", "false"]
+        else:
+            cmd = ["npx", "tsc", "--noEmit", "--pretty", "false"]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )
