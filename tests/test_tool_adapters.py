@@ -200,6 +200,10 @@ def test_mypy_parses_show_column_output(monkeypatch, tmp_path: Path):
     from polycheck.tools.mypy import MypyTool
 
     monkeypatch.setattr(
+        "polycheck.tools.mypy.shutil.which",
+        lambda name: "/usr/local/bin/mypy" if name == "mypy" else None,
+    )
+    monkeypatch.setattr(
         "polycheck.tools.mypy.subprocess.run",
         lambda cmd, **kwargs: subprocess.CompletedProcess(
             cmd, 1,
@@ -249,6 +253,10 @@ def test_vulture_parses_output_despite_finding_count_exit_code(
 ):
     from polycheck.tools.vulture import VultureTool
 
+    monkeypatch.setattr(
+        "polycheck.tools.vulture.shutil.which",
+        lambda name: "/usr/local/bin/vulture" if name == "vulture" else None,
+    )
     # vulture exits with the number of findings (3 here), not 0/1.
     monkeypatch.setattr(
         "polycheck.tools.vulture.subprocess.run",
@@ -346,6 +354,10 @@ def test_deptry_reads_stderr_findings(monkeypatch, tmp_path: Path):
     from polycheck.tools.deptry import DeptryTool
 
     monkeypatch.setattr(
+        "polycheck.tools.deptry.shutil.which",
+        lambda name: "/usr/local/bin/deptry" if name == "deptry" else None,
+    )
+    monkeypatch.setattr(
         "polycheck.tools.deptry.subprocess.run",
         lambda cmd, **kwargs: subprocess.CompletedProcess(
             cmd, 1, stdout="Scanning 1 file...\n",
@@ -403,6 +415,10 @@ def test_depcheck_argv_has_no_duplicate_when_on_path(monkeypatch, tmp_path: Path
 def test_deptry_parses_file_level_findings(monkeypatch, tmp_path: Path):
     from polycheck.tools.deptry import DeptryTool
 
+    monkeypatch.setattr(
+        "polycheck.tools.deptry.shutil.which",
+        lambda name: "/usr/local/bin/deptry" if name == "deptry" else None,
+    )
     monkeypatch.setattr(
         "polycheck.tools.deptry.subprocess.run",
         lambda cmd, **kwargs: subprocess.CompletedProcess(
