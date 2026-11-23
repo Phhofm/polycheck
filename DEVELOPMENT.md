@@ -1,0 +1,124 @@
+# DEVELOPMENT.md
+
+Single log for progress, decisions, and experiments. Task checklists live in
+`MASTERPLAN.md` (task-by-task with commit messages) and `implementation_plan.md`
+(milestones); this file records *state* and *why*, so nothing goes stale.
+
+## Current state (verified 2026-11-23)
+
+Environment: Python 3.12, tooling installed to `~/.local` (pipx-style).
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Lint | `ruff check src tests` | clean (exit 0) |
+| Types | `mypy src/polycheck` | clean — pragmatic config, 0 errors in 35 files |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 97 passed, 0 failed, 1 skipped (smoke test needs LUCID_PATH env) |
+
+Environment notes discovered this session:
+
+* `typer` 0.23 was installed without its `shellingham` dependency → `import typer`
+  (and therefore the whole CLI) failed. Fixed by `pip install --user
+  --break-system-packages shellingham`. Root cause: typer 0.23 split into
+  typer-slim; the global env predates the fix.
+* The globally installed **langsmith pytest plugin** breaks pytest collection
+  (`ModuleNotFoundError: requests_toolbelt`). Workaround until the env is
+  cleaned: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -p no:cacheprovider`.
+* **mypy runs in an isolated pipx venv** (`~/.local/pipx/venvs/mypy`), so it
+  cannot see user site-packages. The runtime deps + stubs must be injected:
+  `pipx inject mypy mcp pyyaml requests typer rich anyio tomli types-PyYAML
+  types-requests`. **Pin the injected mcp to the runtime version**
+  (`pipx inject mypy "mcp==1.27.0"`) — an unpinned inject pulled mcp 2.3.0,
+  whose renamed pydantic fields (`mime_type`, `input_schema`) produced false
+  API-mismatch errors against the 1.27.0 runtime.
+* `tests/test_sonarless.py::test_sonarless_install_requires_docker` is
+  env-dependent: on machines where `sonarless` is actually installed,
+  `install()` short-circuits at `is_installed()` (sonarless.py) before the
+  Docker check the test patches. Needs `is_installed` monkeypatched too —
+  implementation_plan 0.2.
+
+Known silently-broken analyzers (confirmed by inspection 2026-11-23, matching
+implementation_plan Milestone 1):
+
+* `eslint.py` — argv duplication: `eslint eslint --format=json …` when the
+  eslint binary is on PATH (second "eslint" parsed as a lint target).
+* `shellcheck.py` — passes `.` (a directory); shellcheck requires file
+  arguments → silently zero findings.
+* `gitleaks.py` — docstring says `--no-git` but command omits it; JSON report
+  requested without `--report-path`, so stdout parsing is version-fragile.
+* `ruff.py` — severity mapping: everything except `N*` is LOW, so F821
+  (undefined name, a real bug) is filtered out by the default MEDIUM threshold.
+
+## Decisions
+
+Format: id, date, decision, reason, status. User decisions override anything here.
+
+* **D1 (2026-11-23) — Signal quality over breadth.** No new analyzers until the
+  four broken ones above are fixed and every adapter has a seeded-defect
+  regression test (implementation_plan 1.13). A scan that silently returns
+  nothing produces false confidence — the exact failure mode polycheck exists
+  to prevent. Status: ACCEPTED (user approved continuing with review roadmap).
+* **D2 (2026-11-23) — Baseline + diff is the strategic core.** `polycheck
+  baseline` + diff against it ("what's new in my PR?") plus durable
+  suppressions (`.polycheck.yml` `suppress:` list, persisted FALSE-POSITIVE
+  verdicts) are the features that convert polycheck from an occasional audit
+  tool into a daily driver. Priority over CI and PyPI polish.
+  Status: ACCEPTED as roadmap priority; implementation pending.
+* **D3 (2026-11-23) — Reposition README claim.** Lead with "your LLM triages a
+  verified report instead of hallucinating a review" (grounding, precision,
+  reproducibility) rather than token savings, which the on-prem LLM shift
+  weakens. Status: PENDING.
+* **D4 (2026-11-23) — Cut product surface.** Installer zoo reduced to
+  pipx/pip/npm (drop brew/apt/GitHub-release auto-download — maintenance and
+  supply-chain surface; print hints instead). MCP surface cut to
+  `polycheck.run` + `audit_run` (+ resources); `doctor`/`explain_finding`/
+  `install` become CLI-only. Guided-workflow protocol simplified. SARIF
+  shelved. sonarless stays as the semantic-analysis differentiator but becomes
+  opt-in with manual-first install. Status: PENDING (execute after D2).
+* **D5 (2026-11-23) — gitleaks scans the working tree only** (`--no-git`),
+  matching the adapter docstring; history scanning is a deliberate opt-in to
+  add later if wanted. README tool matrix corrected accordingly.
+  Status: ACCEPTED (implemented with the gitleaks fix).
+
+## Experiments
+
+Format per §7: date, hypothesis/recommendation, metric + command, before →
+after, verdict, reason.
+
+* **2026-11-23 — pragmatic mypy config (plan 0.3, RED→GREEN).** Hypothesis:
+  the strict gate was red on fixable typing, not design problems. Metric:
+  `mypy src/polycheck`. Before: 132 errors (strict) → 31 after config change +
+  stub injection → 21 after pinning mcp to the runtime version → **0** after
+  real fixes: `type` → `type[Tool]` (runner, cli), guard for None installer
+  cmd (base.py), typed `_latest_github_release_assets` 3-tuple, inlined
+  issubclass narrowing in registry (removed `_should_register`), hadolint
+  second-variable comprehension fix, `sys.version_info` tomllib/tomli switch
+  (config, pip_audit), `AnyUrl(...)` for MCP resource URIs. Config: strict=true
+  → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
+  warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
+  No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-23 — four adapter fixes (RED→GREEN).** Hypothesis: eslint/shellcheck/
+  gitleaks/ruff were silently broken (see list above). Metric: new regression
+  tests `tests/test_tool_adapters.py` + full suite
+  `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q`. Before: 6 of 8 new tests failed
+  for the expected reasons; suite 88 passed / 1 failed. After: adapter tests
+  8/8; suite 97 passed / 0 failed / 1 skipped; ruff clean. Changes: eslint argv
+  de-duplicated, shellcheck gets file args (returns [] when no `*.sh`),
+  gitleaks parses `--report-path` temp report with `--no-git` and raises on
+  unexpected exit codes, ruff severity mapping (F821/F811 HIGH, E7xx MEDIUM,
+  N* INFO). Also fixed env-dependent sonarless test (0.2) and two README
+  doc lies (duplicate bullet, gitleaks row). Verdict: KEPT.
+* **2026-11-23 — baseline verification of quality gates.** Metric: gate
+  results from `ruff check src tests`, `mypy src/polycheck`,
+  `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q`. Before: unknown (claims in
+  MASTERPLAN dated 2026-07-07: all green, 52 tests). After: ruff clean, mypy
+  132 errors, pytest now green. Verdict: record — MASTERPLAN's "all three must
+  pass" gate is red on mypy only; the 0.1.0-era results were stale.
+
+## Open tasks (ordered)
+
+1. ~~Four adapter fixes with regression tests~~ — done 2026-11-23.
+2. ~~Env-dependent sonarless test fix~~ — done 2026-11-23.
+3. ~~mypy pragmatic config so the strict gate is green~~ — done 2026-11-23.
+4. Seeded-defect verifier hardening (1.13).
+5. Baseline + diff + durable suppressions (D2, extends 5.3).
+6. Surface cuts per D4; README reframe per D3; docs truth pass (6.1).

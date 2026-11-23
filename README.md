@@ -240,8 +240,6 @@ The heavy set currently includes `sonarless`, `semgrep`, `pip-audit`, and
 
 - `sonarless` requires Docker and the `sonarless` binary. Its installer is
   Docker-aware and only runs when Docker is available.
-- `sonarless` requires Docker and the `sonarless` binary. Its installer is
-  Docker-aware and only runs when Docker is available.
 - `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are installed from
   GitHub releases when polycheck can infer the correct OS/architecture asset.
   Unsupported OS/architecture combinations are reported instead of guessed.
@@ -379,7 +377,7 @@ disable:
 | JS / TS            | knip            | Unused files, exports, dependencies     |
 | JS / TS            | npm-audit       | CVE scan in dependencies                |
 | JS / TS            | depcheck        | Missing / unused dependencies           |
-| Universal          | gitleaks        | Secrets in working tree + git history   |
+| Universal          | gitleaks        | Secrets in the working tree             |
 | Universal          | semgrep         | Pattern-based security (multi-language) |
 | Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
 | GitHub Actions     | actionlint      | Workflow file linter                    |
