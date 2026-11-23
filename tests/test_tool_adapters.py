@@ -84,7 +84,8 @@ def test_shellcheck_receives_files_not_directory(monkeypatch, tmp_path: Path):
     assert findings == []
     assert "." not in captured["cmd"]
     assert captured["cmd"][:4] == ["shellcheck", "-f", "gcc", "--severity=style"]
-    files = sorted(captured["cmd"][4:])
+    # Path separators differ on Windows; compare as POSIX-style paths.
+    files = sorted(Path(f).as_posix() for f in captured["cmd"][4:])
     assert files == ["scripts/deploy.sh", "setup.sh"]
 
 
