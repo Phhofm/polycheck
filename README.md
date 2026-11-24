@@ -354,6 +354,21 @@ diagnostics, listings, explanations, and installs belong to the CLI.
 CLI equivalents of the retired MCP tools: `polycheck doctor`,
 `polycheck install`, `polycheck list-tools`, `polycheck explain`.
 
+### Code Mode friendly
+
+polycheck follows the [Code Mode](https://blog.cloudflare.com/code-mode/)
+guidance (Cloudflare, Anthropic *programmatic tool calling*, OpenCode 2.0
+default): tool definitions stay tiny (two tools, not ten), tool responses
+are compact summaries, and the heavy data lives in report **files** the
+agent reads selectively — only the final result ever needs to reach the
+model. For orchestration and ad-hoc composition, the CLI is the scripting
+layer (`polycheck run . --diff --fail-on HIGH | …`), which is the same
+pattern as Cloudflare's command-line approach. An execute-code MCP tool
+would duplicate the CLI, so there isn't one. polycheck also composes fine
+with agents that route MCP calls through a code-mode interpreter by default
+(OpenCode 2.x): responses are already compact, and the install-approval
+flow is result-based (`needs_user_input`), not mid-call.
+
 ---
 
 ## What You Get
