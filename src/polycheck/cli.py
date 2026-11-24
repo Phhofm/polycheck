@@ -274,6 +274,16 @@ def _print_summary(results: list, findings: list, written: list[Path]) -> None:
         )
     console.print(by_tool)
     console.print(f"\n[bold]{len(findings)}[/bold] findings after filtering")
+    tracks = [f.track for f in findings]
+    if any(t for t in tracks):
+        tracked_n = sum(1 for t in tracks if t == "tracked")
+        untracked_n = sum(1 for t in tracks if t == "untracked")
+        ignored_n = sum(1 for t in tracks if t == "ignored")
+        console.print(
+            f"[cyan]Git buckets:[/cyan] tracked {tracked_n}, untracked "
+            f"{untracked_n}, gitignored {ignored_n} — the fail-on gate "
+            "counts tracked + untracked (gitignored files cannot reach the repo)."
+        )
     if written:
         console.print("\nReports written:")
         for p in written:
@@ -802,15 +812,18 @@ def _exit_code(findings: list[Finding], fail_on: str) -> int:
     """Return 0 if all findings are below ``fail_on``; 1 otherwise.
 
     The default is MEDIUM, so LOW and INFO findings don't fail the build.
+    Findings in gitignored files are excluded from the gate — they cannot
+    reach the repo via push (0.3.3; the buckets stay visible in reports).
     """
-    if not findings:
+    gated = [f for f in findings if f.track != "ignored"]
+    if not gated:
         return 0
     from .finding import Severity
     try:
         threshold = Severity[fail_on]
     except KeyError:
         return 0
-    return 1 if any(f.severity >= threshold for f in findings) else 0
+    return 1 if any(f.severity >= threshold for f in gated) else 0
 
 
 def main() -> None:

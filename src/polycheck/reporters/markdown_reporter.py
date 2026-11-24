@@ -36,6 +36,7 @@ def render(
     lines.extend(_header(repo, findings, results))
     lines.extend(_severity_section(findings))
     lines.extend(_category_section(findings))
+    lines.extend(_track_section(findings))
     lines.extend(_tool_execution_section(results))
     lines.extend(_findings_sections(findings))
 
@@ -64,6 +65,37 @@ def _severity_section(findings: list) -> list[str]:
         n = by_sev.get(sev, 0)
         if n:
             lines.append(f"| {_SEV_BADGE[sev]} | {n} |")
+    lines.append("")
+    return lines
+
+
+def _track_section(findings: list) -> list[str]:
+    """Git track buckets. The headline is the tracked sum: gitignored
+    files cannot reach the repo via push, so they must not read as
+    repo-wide alarms (bigger-repo live test: 1717 raw, ~1690 ignored)."""
+    tracks = [f.track for f in findings]
+    if not any(t for t in tracks):
+        return []
+    by_track: Counter = Counter(t for t in tracks if t)
+    tracked_sev = Counter(f.severity for f in findings if f.track == "tracked")
+    tracked_above_medium = sum(
+        n for sev, n in tracked_sev.items() if sev >= Severity.MEDIUM
+    )
+    lines = [
+        "## By git track status",
+        "",
+        "| Bucket | Count |",
+        "|--------|-------|",
+    ]
+    for label in ("tracked", "untracked", "ignored"):
+        n = by_track.get(label, 0)
+        if n:
+            lines.append(f"| {label} | {n} |")
+    lines.extend([
+        "",
+        f"Severity ≥ MEDIUM in **tracked** files: {tracked_above_medium} "
+        "— that is what a push carries. Gitignored files cannot reach the repo.",
+    ])
     lines.append("")
     return lines
 

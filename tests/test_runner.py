@@ -205,3 +205,83 @@ def test_actionlint_eligible_when_github_actions_detected(tmp_path: Path):
     applicable = {t.name for t in runner._applicable_tools()}
 
     assert "actionlint" in applicable
+
+
+def test_annotate_track_status_buckets(tmp_path: Path):
+    """Tracked/untracked/ignored classification per finding (0.3.3)."""
+    import subprocess
+
+    from polycheck.runner import annotate_track_status
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "local.env").write_text("SECRET=1\n")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "trace.json").write_text("{}\n")
+    (tmp_path / ".gitignore").write_text("logs/\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "app.py", ".gitignore"], cwd=tmp_path, check=True)
+    # local.env exists but is neither tracked nor ignored → untracked
+
+    f_tracked = _finding("F401")
+    f_tracked.file = "app.py"
+    f_ignored = _finding("G101")
+    f_ignored.file = "logs/trace.json"
+    f_untracked = _finding("E501")
+    f_untracked.file = "local.env"
+    f_nopath = _finding("DEP001")
+    f_nopath.file = None
+    f_pseudo = _finding("depcheck-missing")
+    f_pseudo.file = "left-pad"  # package name, not a real path
+
+    out = annotate_track_status(
+        tmp_path, [f_tracked, f_ignored, f_untracked, f_nopath, f_pseudo]
+    )
+    by_file = {f.file: f.track for f in out}
+
+    assert by_file["app.py"] == "tracked"
+    assert by_file["logs/trace.json"] == "ignored"
+    assert by_file["local.env"] == "untracked"
+    assert by_file[None] is None
+    assert by_file["left-pad"] is None
+
+
+def test_annotate_track_status_non_git_repo_all_none(tmp_path: Path):
+    from polycheck.runner import annotate_track_status
+
+    f = _finding("F401")
+    f.file = "app.py"
+
+    out = annotate_track_status(tmp_path, [f])
+
+    assert out[0].track is None
+
+
+def test_exit_code_ignores_gitignored_findings():
+    """The pre-push gate counts findings that can reach the repo —
+    gitignored files cannot, so they must not block."""
+    from polycheck.cli import _exit_code
+
+    f_ok = _finding("F401")
+    f_ok.file = "app.py"
+    f_ok.severity = Severity.CRITICAL
+    f_ok.track = "tracked"
+    f_ignored = _finding("G101")
+    f_ignored.file = "logs/trace.json"
+    f_ignored.severity = Severity.CRITICAL
+    f_ignored.track = "ignored"
+
+    assert _exit_code([f_ignored], "CRITICAL") == 0
+    assert _exit_code([f_ok], "CRITICAL") == 1
+    assert _exit_code([f_ok, f_ignored], "HIGH") == 1
+
+
+def test_exit_code_counts_untracked():
+    """Untracked files can be added to the commit — they block."""
+    from polycheck.cli import _exit_code
+
+    f = _finding("F401")
+    f.severity = Severity.HIGH
+    f.track = "untracked"
+
+    assert _exit_code([f], "HIGH") == 1

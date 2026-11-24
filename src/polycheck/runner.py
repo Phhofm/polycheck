@@ -27,7 +27,7 @@ from .config import Config
 from .detect import detect
 from .finding import Category, Finding, Severity
 from .registry import ToolRegistry, default_registry
-from .tools.base import Tool
+from .tools.base import Tool, annotate_track_status
 
 
 @dataclass
@@ -88,6 +88,7 @@ class Runner:
         # Stable order for the report: by tool name.
         results.sort(key=lambda r: r.tool)
         findings = [f for r in results for f in r.findings]
+        annotate_track_status(self.repo, findings)
         return findings, results
 
     def _applicable_tools(self) -> list[type[Tool]]:

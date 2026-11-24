@@ -78,6 +78,7 @@ class Finding:
     fixable: bool = False                  # tool has a --fix equivalent
     fix_command: str | None = None         # exact command the user can run
     doc_url: str | None = None             # tool-specific docs link, if known
+    track: str | None = None               # "tracked" | "untracked" | "ignored" (git repos)
     raw: dict[str, Any] = field(default_factory=dict)  # original tool output
 
     def location(self) -> str:
@@ -118,6 +119,7 @@ class Finding:
             fixable=d.get("fixable", False),
             fix_command=d.get("fix_command"),
             doc_url=d.get("doc_url"),
+            track=d.get("track"),
             raw=d.get("raw", {}),
         )
 

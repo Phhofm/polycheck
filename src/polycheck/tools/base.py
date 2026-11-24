@@ -91,6 +91,60 @@ def _matching(
             yield rel
 
 
+def annotate_track_status(repo: Path, findings: list[Finding]) -> list[Finding]:
+    """Annotate each finding with its git track status.
+
+    ``tracked`` = in the index/history (reaches the repo via push),
+    ``ignored`` = matched by ignore rules (never pushed),
+    ``untracked`` = in the working tree, not yet committed (can be added),
+    ``None`` = not applicable (no git repo, or the "file" is not a real
+    path — e.g. a package name from depcheck).
+
+    One ``git ls-files`` call plus one batched ``git check-ignore`` call;
+    no per-finding process spawns.
+    """
+    repo = Path(repo)
+    if not (repo / ".git").exists() or not findings:
+        return findings
+
+    tracked: set[str] = set()
+    try:
+        out = subprocess.run(
+            ["git", "ls-files"], cwd=repo, capture_output=True, text=True, timeout=60
+        )
+        if out.returncode != 0:
+            return findings
+        tracked = {line for line in out.stdout.splitlines() if line}
+
+        candidates = [
+            f.file for f in findings
+            if f.file and f.file not in tracked and (repo / f.file).exists()
+        ]
+        ignored: set[str] = set()
+        if candidates:
+            ci = subprocess.run(
+                ["git", "check-ignore", "--stdin", "-z"],
+                cwd=repo, input="\0".join(candidates) + "\0",
+                capture_output=True, text=True, timeout=60,
+            )
+            if ci.returncode in (0, 1):
+                ignored = {line for line in ci.stdout.split("\0") if line}
+    except (subprocess.TimeoutExpired, OSError):
+        return findings
+
+    for f in findings:
+        if not f.file:
+            continue
+        if f.file in tracked:
+            f.track = "tracked"
+        elif f.file in ignored:
+            f.track = "ignored"
+        elif (repo / f.file).exists():
+            f.track = "untracked"
+        # else: pseudo-path (package name etc.) → stays None
+    return findings
+
+
 class Tool(abc.ABC):
     """Base class for all polycheck tool adapters."""
 
