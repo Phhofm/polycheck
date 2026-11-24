@@ -243,10 +243,14 @@ after, verdict, reason.
    first attempt exposed a release-commit mistake (pyproject omitted from
    staging), fixed and documented above.
 9. ~~Reviewer subagent + pre-push gate~~ — done 2026-11-24 (0.3.0).
-10. **0.3.1 candidates**: duplication adapter (jscpd) as the one real
-    static-proxy for DRY; mypy strictness presets per language; revisit
-    knip expectation; Kilo/OpenCode agent frontmatter field names to be
-    re-verified against current host docs before advertising agent support
-    publicly.
+10. ~~0.3.1 candidates~~ — partially done: scb-check adapter shipped (covers
+    DRY-proxy via clone detection + slop patterns + erosion); Kilo/OpenCode
+    agent paths verified against live installs and OpenCode V2 docs
+    (`.opencode/agents/` plural, `~/.config/kilo/agents/`); remaining:
+    mypy strictness presets per language; knip expectation.
 11. Optional later: CodeQL as an optional heavy adapter; coverage tooling
     for test-coverage reporting (currently out of scope by design).
+12. **Note (2026-11-24):** GitHub Actions runner capacity was constrained
+    all day — CI runs queued for hours (macOS starvation overnight, then
+    the whole matrix). Local gates + the Release workflow + PyPI serve as
+    the verification chain; CI catches up when capacity returns.
