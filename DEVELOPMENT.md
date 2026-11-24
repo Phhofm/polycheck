@@ -326,3 +326,18 @@ after, verdict, reason.
     all day — CI runs queued for hours (macOS starvation overnight, then
     the whole matrix). Local gates + the Release workflow + PyPI serve as
     the verification chain; CI catches up when capacity returns.
+* **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
+  bigger-repo test.** Live-test feedback turned into features: (1) track
+  annotation (batch `git ls-files` + `git check-ignore --stdin`, zero
+  per-finding spawns), gate counts tracked+untracked, reports show
+  buckets — the 1717-raw-finding headline problem solved at the
+  runner/reporter layer, not per-adapter; (2) gitleaks allowlist gains
+  the repo's gitignored paths (collapsed dirs from
+  `git ls-files -o -i --exclude-standard --directory`; hyphens
+  un-escaped after re.escape — `test\-results` does not literal-match);
+  (3) reviewer template: doc-verification/applicability rule for
+  concrete config values (invented `min-release-age = 7` case), cited
+  lines must be read before proposing actions (already-satisfied code →
+  FALSE POSITIVE with evidence — the template-literal case), return
+  format carries coverage gaps. The colleague loop's full cycle (scan →
+  triage → choice → fix → re-scan green) ran between 0.3.2 and 0.3.3.

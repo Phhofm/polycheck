@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.3 (2026-11-24)
+
+From the bigger-repo live test (1717 raw findings on first scan):
+
+Features:
+  * **Track-status buckets**: every finding is annotated
+    `tracked` / `untracked` / `ignored` (batch git calls, zero per-finding
+    cost). The severity headline and the `--fail-on` gate count only what a
+    push can carry (tracked + untracked); gitignored files cannot reach the
+    repo, so ~1690 "CRITICAL" noise findings in a real repo stopped being
+    alarms. Reports show the buckets explicitly.
+  * gitleaks excludes the repo's **gitignored paths** (build outputs,
+    Playwright traces with throwaway tokens, backups) via the generated
+    allowlist — the source of the 1717 raw findings.
+  * Reviewer agent: suggested actions with concrete config keys/values are
+    doc-verified or phrased generically with an applicability condition
+    (invented keys/units are worse than no value); triage reads the cited
+    lines before proposing actions (action already satisfied → FALSE
+    POSITIVE with evidence); the return format carries a coverage-gap line
+    (e.g. "npm-audit not installed — no CVE scan this run").
 ## 0.3.2 (2026-11-24)
 
 Features:
