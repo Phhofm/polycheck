@@ -774,6 +774,9 @@ def test_gitleaks_allowlist_excludes_gitignored_paths(monkeypatch, tmp_path: Pat
     traces = tmp_path / "client" / "test-results"
     traces.mkdir(parents=True)
     (traces / "trace.json").write_text('{"jwt": "x"}\n')
+    backup = tmp_path / "db_backup"
+    backup.mkdir()
+    (backup / "dump.sql").write_text("-- dump\n")
 
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
 
@@ -782,14 +785,16 @@ def test_gitleaks_allowlist_excludes_gitignored_paths(monkeypatch, tmp_path: Pat
         lambda name: "/usr/bin/gitleaks" if name == "gitleaks" else None,
     )
     captured: dict = {}
+    real_run = subprocess.run
 
     def fake_run(cmd, **kwargs):
         captured["cmd"] = list(cmd)
         if "--config" in cmd:
             config_arg = cmd[cmd.index("--config") + 1]
             captured["config"] = Path(config_arg).read_text(encoding="utf-8")
-        # git ls-files from _ignored_paths passes through untouched
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        # git ls-files from _ignored_paths must run for real
+        return real_run(cmd, **kwargs)
 
     monkeypatch.setattr("polycheck.tools.gitleaks.subprocess.run", fake_run)
 

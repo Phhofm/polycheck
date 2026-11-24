@@ -45,7 +45,11 @@ def _config_with_ignores(repo: Path) -> str:
     cannot enter the repo via push, so they stay out of the scan."""
     ignored = _ignored_paths(repo)
     extra = "\n".join(
-        f"    '''^{re.escape(p)}(/.*)?$'''," for p in ignored if p
+        # re.escape also escapes '-', which breaks literal matching on
+        # names like "test-results" — outside character classes the
+        # hyphen is a plain literal, so un-escape it.
+        f"    '''^{re.escape(p).replace(chr(92) + '-', '-')}(/.*)?$''',"
+        for p in ignored if p
     )
     paths_block = f"{_ALLOWLIST}\n{extra}\n" if extra else _ALLOWLIST
     return (
