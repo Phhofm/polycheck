@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from polycheck.finding import Severity
+from polycheck.finding import Category, Severity
 from polycheck.tools.eslint import EslintTool
 from polycheck.tools.gitleaks import GitleaksTool
 from polycheck.tools.ruff import RuffTool
@@ -581,3 +581,105 @@ def test_vulture_scans_only_project_files(tmp_path: Path, monkeypatch):
 
     py_args = [a for a in captured["cmd"] if a.endswith(".py")]
     assert py_args == ["app.py"]
+
+
+# --- scb-check (SlopCodeBench verbosity/erosion) ---
+
+
+def test_scb_check_parses_real_output_shapes(monkeypatch, tmp_path: Path):
+    from polycheck.tools.scb_check import ScbCheckTool
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.shutil.which",
+        lambda name: "/usr/bin/scb-check" if name == "scb-check" else None,
+    )
+    # Verbatim shapes from real scb-check 0.x output.
+    stdout = (
+        "warning[for-range-len]: `for i in range(len(x))` - use `enumerate(x)` or iterate `x` directly\n"
+        "  ┌─ slop.py:3:5\n"
+        "  │\n"
+        "3 │     for i in range(len(files)):\n"
+        "  │\n"
+        "\n"
+        "warning[dict-get-default-none]: `d.get(k, None)` - drop the `None`, it is already the default\n"
+        "  ┌─ slop.py:8:12\n"
+        "  │\n"
+        "\n"
+        "erosion: function `run` exceeds complexity threshold\n"
+        "   ┌─ src/cli.py:84\n"
+        "   │\n"
+        "   = complexity: 12, sloc: 63 (threshold: complexity > 10)\n"
+        "\n"
+        "erosion: function `parse` exceeds cognitive complexity threshold\n"
+        "   ┌─ src/parser.py:20\n"
+        "   │\n"
+        "   = cognitive complexity: 13, sloc: 84 (threshold: cognitive complexity > 10)\n"
+        "\n"
+        "duplicate-structure: duplicated block (3 lines, 2 instances)\n"
+        "    ┌─ src/a.py:10\n"
+        "    │\n"
+        "    ┌─ src/b.py:20\n"
+        "    │\n"
+    )
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 1, stdout=stdout, stderr=""),
+    )
+
+    findings = ScbCheckTool().run(tmp_path)
+
+    by_rule: dict[str, list] = {}
+    for f in findings:
+        by_rule.setdefault(f.rule, []).append(f)
+
+    assert len(by_rule["for-range-len"]) == 1
+    f = by_rule["for-range-len"][0]
+    assert f.file == "slop.py" and f.line == 3 and f.column == 5
+    assert f.severity is Severity.LOW and f.category is Category.LINT
+
+    assert by_rule["dict-get-default-none"][0].line == 8
+
+    assert by_rule["cyclomatic-erosion"][0].file == "src/cli.py"
+    assert by_rule["cyclomatic-erosion"][0].line == 84
+    assert by_rule["cyclomatic-erosion"][0].severity is Severity.MEDIUM
+    assert by_rule["cyclomatic-erosion"][0].category is Category.COMPLEXITY
+    assert by_rule["cognitive-erosion"][0].line == 20
+    assert by_rule["cognitive-erosion"][0].category is Category.COMPLEXITY
+
+    assert len(by_rule["duplicate-structure"]) == 1
+    dup = by_rule["duplicate-structure"][0]
+    assert dup.file == "src/a.py" and dup.line == 10
+    assert dup.category is Category.DUPLICATION
+    assert "2 instances" in dup.message
+
+
+def test_scb_check_clean_run_returns_empty(monkeypatch, tmp_path: Path):
+    from polycheck.tools.scb_check import ScbCheckTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.shutil.which",
+        lambda name: "/usr/bin/scb-check" if name == "scb-check" else None,
+    )
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""),
+    )
+
+    assert ScbCheckTool().run(tmp_path) == []
+
+
+def test_scb_check_usage_error_surfaces(monkeypatch, tmp_path: Path):
+    from polycheck.tools.scb_check import ScbCheckTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.shutil.which",
+        lambda name: "/usr/bin/scb-check" if name == "scb-check" else None,
+    )
+    monkeypatch.setattr(
+        "polycheck.tools.scb_check.subprocess.run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 2, stdout="", stderr="bad config"),
+    )
+
+    with pytest.raises(RuntimeError, match="scb-check exited 2"):
+        ScbCheckTool().run(tmp_path)

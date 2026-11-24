@@ -109,6 +109,21 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-24 — scb-check adapter (AI-slop metrics) shipped.** What: new
+  adapter for [scb-check](https://github.com/gabeorlanski/scb-check)
+  (SlopCodeBench verbosity/erosion model): parses human output into
+  ast-grep slop findings (LINT/LOW), erosion findings
+  (COMPLEXITY/MEDIUM, cyclomatic + cognitive), and duplicate-structure
+  findings (DUPLICATION/MEDIUM); multi-box blocks parse via a
+  header→location state machine. JSON output carries aggregates only —
+  per-finding detail lives in the human output, hence the parser. Seeded
+  repo gained slop.py + dup.py; verifier expectation `scb-check: 3`
+  verified `ok` against the real tool (pipx-installed). Category enum
+  already had DUPLICATION/COMPLEXITY — no schema change.installer:
+  `pipx:scb-check`. Why it matters: fills the identified DRY-proxy gap
+  (clone detection) and adds the quantitative anti-slop signal for
+  agent-written code; README links SlopCodeBench + the No AI Slop
+  manifesto (its resolution 12 is polycheck's thesis).
 * **2026-11-24 — reviewer subagent + pre-push gate shipped (0.3.0).** What:
   `polycheck init` writes `polycheck-reviewer` subagent definitions for
   Kilo/OpenCode/Claude (shared body: run via CLI, triage with verdicts, write

@@ -455,6 +455,7 @@ the CI exit-code gate, so they never reappear in a later run.
 | JS / TS            | npm-audit       | CVE scan in dependencies                |
 | JS / TS            | depcheck        | Missing / unused dependencies           |
 | Universal          | gitleaks        | Secrets in the working tree             |
+| Universal          | scb-check       | AI-slop metrics: duplicated AST blocks, slop patterns (`range(len(x))`, `dict.get(k, None)`, trivial wrappers), and erosion (complexity-mass concentration) — the measurable DRY/KISS proxies, built for the [SlopCodeBench](https://www.scbench.ai) erosion model |
 | Universal          | semgrep         | Pattern-based security (multi-language) |
 | Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
 | GitHub Actions     | actionlint      | Workflow file linter                    |
@@ -597,6 +598,13 @@ lets your linters do what they're good at, and hands the LLM a tight
 report to act on.
 
 ---
+
+The token savings come free with the architecture. The deeper claim is
+[the No AI Slop manifesto's](https://www.slopmanifesto.com/) resolution 12:
+*"Anything a linter, type checker, or automated check can catch, we let it
+catch."* polycheck is that catch-all for agent-written code — including the
+[measurable slop metrics](https://www.scbench.ai) (verbosity, erosion) that
+quantify how agents degrade codebases over repeated changes.
 
 ## Philosophy
 

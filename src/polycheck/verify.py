@@ -31,6 +31,7 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "hadolint": 1,    # untagged FROM ubuntu
     "actionlint": 1,  # unknown "runz:" key in ci.yml
     "depcheck": 1,    # unused left-pad dependency
+    "scb-check": 3,   # two slop patterns + one duplicated block
 }
 
 
@@ -198,6 +199,32 @@ dependencies = ["requests==2.0.0"]
     (repo / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
     (repo / "app.py").write_text(
         "import os\n\nx: int = 'bad'\n\ndef unused_helper() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+    # scb-check seeds: two slop patterns + one duplicated block.
+    (repo / "slop.py").write_text(
+        "def sloppy_names(files):\n"
+        "    out = []\n"
+        "    for i in range(len(files)):\n"
+        "        out.append(files[i].name)\n"
+        "    return out\n"
+        "\n\n"
+        "def sloppy_value(cfg):\n"
+        "    return cfg.get('a', None)\n",
+        encoding="utf-8",
+    )
+    (repo / "dup.py").write_text(
+        "def dup_a(items):\n"
+        "    total = 0\n"
+        "    for item in items:\n"
+        "        total += item\n"
+        "    return total\n"
+        "\n\n"
+        "def dup_b(items):\n"
+        "    total = 0\n"
+        "    for item in items:\n"
+        "        total += item\n"
+        "    return total\n",
         encoding="utf-8",
     )
     (repo / "package.json").write_text(
