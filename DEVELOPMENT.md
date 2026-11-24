@@ -217,26 +217,21 @@ after, verdict, reason.
 2. ~~Env-dependent sonarless test fix~~ — done 2026-11-23.
 3. ~~mypy pragmatic config so the strict gate is green~~ — done 2026-11-23.
 4. ~~Seeded-defect verifier hardening (1.13)~~ — done 2026-11-23; also exposed
-   and fixed 6 more broken adapters. eslint expectation needs an
-   eslint-installed machine; knip expectation undecided.
+   and fixed 6 more broken adapters. eslint verified end-to-end via local
+   npm; knip expectation still undecided.
 5. ~~Baseline + diff + durable suppressions (D2)~~ — done 2026-11-23.
-6. ~~README reframe (D3), release workflow (2.2), version 0.2.0~~ — done.
-7. ~~CI has landed (2.1)~~ — done 2026-11-23: full matrix green (ubuntu/macos/
-   windows × 3.10/3.12/3.13 + selfcheck dogfood), run 45198067581.
-8. ~~PyPI release (2.2)~~ — done 2026-11-23: `v0.2.0` tagged on main (dev
-   fast-forwarded, `e7f8827..03e8977`), Release workflow published
-   `polycheck-0.2.0` (wheel + sdist) via trusted publishing; verified live at
-   https://pypi.org/pypi/polycheck/json. `pipx install polycheck` works.
-9. ~~Remaining D4 surface cuts~~ — done 2026-11-23: MCP slimmed to 2 tools
-   (retired doctor/install/list/explain → CLI equivalents, category triage
-   knowledge folded into the triage prompt), github-release + curl|bash
-   installers replaced by hints (no unverified binaries downloaded),
-   sonarless opt-in achieved via manual install (see D4 refinement below).
-10. ~~Exclude vendored/build dirs~~ — done 2026-11-23: shared
-    `iter_source_files` walker (pruned os.walk) used by mypy, eslint,
-    vulture, shellcheck, hadolint; noisy-repo scan reports only real
-    findings. Perf claim measured and dropped (ruff self-excludes; globs
-    short-circuit); the driver is noise correctness.
-11. ~~MCP progress notifications~~ — done 2026-11-23.
-12. Next release (0.2.2): walker, MCP slimming, installer hints, progress
-    notifications — CHANGELOG "Unreleased" section already seeded.
+6. ~~README reframe (D3), release workflow (2.2)~~ — done; 0.2.0 and 0.2.1
+   released and verified on PyPI.
+7. ~~CI (2.1)~~ — green across the matrix; macOS hosted pools starved
+   intermittently (GitHub capacity, not code) — macos-13 switch mitigates.
+8. ~~PyPI release pipeline~~ — proven twice (0.2.1, 0.3.0); the 0.3.0
+   first attempt exposed a release-commit mistake (pyproject omitted from
+   staging), fixed and documented above.
+9. ~~Reviewer subagent + pre-push gate~~ — done 2026-11-24 (0.3.0).
+10. **0.3.1 candidates**: duplication adapter (jscpd) as the one real
+    static-proxy for DRY; mypy strictness presets per language; revisit
+    knip expectation; Kilo/OpenCode agent frontmatter field names to be
+    re-verified against current host docs before advertising agent support
+    publicly.
+11. Optional later: CodeQL as an optional heavy adapter; coverage tooling
+    for test-coverage reporting (currently out of scope by design).
