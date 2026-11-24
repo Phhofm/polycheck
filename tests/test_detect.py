@@ -58,3 +58,45 @@ def test_detect_multi(tmp_path: Path):
     slugs = {lang.slug for lang in langs}
     assert "python" in slugs
     assert "javascript" in slugs
+
+
+def test_detect_python_from_subdir_files_without_manifest(tmp_path: Path):
+    """Repos like polycheck-less script collections: scripts/*.py with no
+    pyproject.toml must still detect Python (first external live test)."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "run_eval.py").write_text("print('hi')\n")
+
+    slugs = {lang.slug for lang in detect(tmp_path)}
+
+    assert "python" in slugs
+
+
+def test_detect_typescript_from_subdir_without_tsconfig(tmp_path: Path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.ts").write_text("const x = 1;\n")
+
+    slugs = {lang.slug for lang in detect(tmp_path)}
+
+    assert "typescript" in slugs
+
+
+def test_detect_shell_from_nested_script(tmp_path: Path):
+    deep = tmp_path / "tools" / "bin"
+    deep.mkdir(parents=True)
+    (deep / "deploy.sh").write_text("echo hi\n")
+
+    slugs = {lang.slug for lang in detect(tmp_path)}
+
+    assert "shell" in slugs
+
+
+def test_detect_ignores_vendored_extensions(tmp_path: Path):
+    venv = tmp_path / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "vendored.py").write_text("x = 1\n")
+
+    slugs = {lang.slug for lang in detect(tmp_path)}
+
+    assert "python" not in slugs

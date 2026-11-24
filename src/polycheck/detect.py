@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .tools.base import iter_source_files
+
 
 @dataclass(frozen=True)
 class Language:
@@ -73,14 +75,13 @@ def detect(repo: Path) -> list[Language]:
     function does NOT walk the whole tree — that would be slow on
     monorepos, and most tools work off the root anyway.
 
-    Also detects by file extensions in the root directory.
+    Also detects by file extensions anywhere in the project (walker-based, pruned).
     """
     repo = Path(repo).resolve()
     if not repo.is_dir():
         raise NotADirectoryError(f"{repo} is not a directory")
 
     found = _detect_by_markers(repo)
-    _detect_shell_by_extension(repo, found)
     _detect_by_file_extension(repo, found)
 
     return found
@@ -106,18 +107,15 @@ def _has_marker(repo: Path, lang: Language) -> bool:
     return False
 
 
-def _detect_shell_by_extension(repo: Path, found: list[Language]) -> None:
-    """Also detect shell by file extension if any .sh files exist at root."""
-    if any(p.suffix == ".sh" for p in repo.iterdir() if p.is_file()):
-        if not any(lang.slug == "shell" for lang in found):
-            found.append(Language("shell", "Shell", ()))
-
-
 # File extension to language slug mapping
 _EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
     ".ts": "typescript",
+    ".tsx": "typescript",
     ".go": "go",
     ".rs": "rust",
     ".java": "java",
@@ -129,19 +127,27 @@ _EXT_TO_LANG: dict[str, str] = {
     ".scala": "scala",
     ".ex": "elixir",
     ".hs": "haskell",
+    ".sh": "shell",
+    ".bash": "shell",
 }
 
 
 def _detect_by_file_extension(repo: Path, found: list[Language]) -> None:
-    """Detect languages by file extensions in the root directory.
+    """Detect languages by file extension anywhere in the project.
 
-    This catches single-file projects that lack marker files.
+    Detection is walker-based (pruned: vendored/build dirs and
+    .gitignored files are skipped), so a repo with only
+    ``scripts/*.py`` detects Python just like one with a manifest —
+    extensions seen once are enough per language.
     """
     found_slugs = {lang.slug for lang in found}
-    for p in repo.iterdir():
-        if not p.is_file():
+    seen_ext: set[str] = set()
+    for p in iter_source_files(repo, ("*",)):
+        suffix = p.suffix
+        if suffix in seen_ext:
             continue
-        lang_slug = _EXT_TO_LANG.get(p.suffix)
+        seen_ext.add(suffix)
+        lang_slug = _EXT_TO_LANG.get(suffix)
         if lang_slug and lang_slug not in found_slugs:
             # Find the Language object for this slug
             for lang in LANGUAGES:

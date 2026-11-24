@@ -187,3 +187,21 @@ def test_filter_by_baseline_none_is_identity():
 
     findings = [_finding("F401")]
     assert filter_by_baseline(findings, None) == findings
+
+
+def test_actionlint_eligible_when_github_actions_detected(tmp_path: Path):
+    """Regression: actionlint declared no languages, so the candidate
+    filter silently dropped it from every run (external live test)."""
+    from polycheck.registry import default_registry
+    from polycheck.runner import Runner
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "tests.yml").write_text("on: [push]\njobs: {}\n")
+
+    default_registry.discover()
+    runner = Runner(repo=tmp_path, config=Config(), registry=default_registry)
+    applicable = {t.name for t in runner._applicable_tools()}
+
+    assert "actionlint" in applicable

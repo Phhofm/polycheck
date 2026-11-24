@@ -24,7 +24,8 @@ _ACTIONLINT_LINE = re.compile(
 class ActionlintTool(Tool):
     name = "actionlint"
     category = Category.LINT
-    languages = []   # applies to GH Actions
+    languages = ["github-actions"]  # was [] — the empty list silently
+    # excluded actionlint from every run's candidate filter.
     universal = False
     installer = "github-release:rhysd/actionlint"
 

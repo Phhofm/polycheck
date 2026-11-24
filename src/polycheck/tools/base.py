@@ -48,12 +48,23 @@ def iter_source_files(
 ) -> Iterator[Path]:
     """Yield repo-relative source files matching any pattern.
 
-    Walks the repo with pruning (excluded directories are never entered)
-    and matches ``patterns`` with pathlib semantics, so both basename
-    globs (``*.sh``) and dir-anchored patterns (``.github/workflows/*.yml``)
-    work.
+    Git repos: discovery comes from ``git ls-files -co --exclude-standard``,
+    so ``.gitignore``d files (foreign harness code, logs, generated trees)
+    are never scanned — the #1 source of false positives. Non-git repos
+    fall back to a pruned os.walk. ``EXCLUDED_DIRS`` applies in both paths.
     """
     repo = Path(repo)
+    if (repo / ".git").exists():
+        try:
+            out = subprocess.run(
+                ["git", "ls-files", "-co", "--exclude-standard"],
+                cwd=repo, capture_output=True, text=True, timeout=60,
+            )
+            if out.returncode == 0:
+                yield from _matching(repo, (line for line in out.stdout.splitlines() if line), patterns)
+                return
+        except (subprocess.TimeoutExpired, OSError):
+            pass  # fall through to the walker
     for root, dirs, files in os.walk(repo):
         dirs[:] = sorted(d for d in dirs if d not in EXCLUDED_DIRS)
         base = Path(root).relative_to(repo)
@@ -62,6 +73,18 @@ def iter_source_files(
             rel_posix = PurePosixPath(rel.as_posix())
             if any(rel_posix.match(pattern) for pattern in patterns):
                 yield rel
+
+
+def _matching(
+    repo: Path, rel_names: Iterable[str], patterns: Iterable[str]
+) -> Iterator[Path]:
+    for name in rel_names:
+        rel = Path(name)
+        if any(part in EXCLUDED_DIRS for part in rel.parts):
+            continue
+        rel_posix = PurePosixPath(rel.as_posix())
+        if any(rel_posix.match(pattern) for pattern in patterns):
+            yield rel
 
 
 class Tool(abc.ABC):

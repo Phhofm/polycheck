@@ -693,3 +693,36 @@ def test_scb_check_usage_error_surfaces(monkeypatch, tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="scb-check exited 2"):
         ScbCheckTool().run(tmp_path)
+
+
+def test_iter_source_files_respects_gitignore(tmp_path: Path):
+    """Git repos: files ignored by .gitignore must never be scanned —
+    foreign harness code in gitignored dirs is the #1 noise source."""
+    import subprocess
+
+    from polycheck.tools.base import iter_source_files
+
+    (tmp_path / "script.sh").write_text("echo hi\n")
+    logs = tmp_path / "logs" / "run_evaluation" / "case1"
+    logs.mkdir(parents=True)
+    (logs / "eval.sh").write_text("echo foreign\n")
+    (tmp_path / ".gitignore").write_text("logs/\n")
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+    rel = [p.as_posix() for p in iter_source_files(tmp_path, ("*.sh",))]
+
+    assert rel == ["script.sh"]
+
+
+def test_iter_source_files_non_git_falls_back_to_walker(tmp_path: Path):
+    from polycheck.tools.base import iter_source_files
+
+    (tmp_path / "script.sh").write_text("echo hi\n")
+    venv = tmp_path / ".venv"
+    venv.mkdir()
+    (venv / "x.sh").write_text("echo v\n")
+
+    rel = [p.as_posix() for p in iter_source_files(tmp_path, ("*.sh",))]
+
+    assert rel == ["script.sh"]
