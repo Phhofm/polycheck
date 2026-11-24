@@ -109,6 +109,20 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-24 — first external live test found 3 meta-findings (from Philip's
+  vibecode-skill repo run).** (1) Gitignored directories are scanned —
+  `iter_source_files` + EXCLUDED_DIRS is a static denylist without
+  .gitignore awareness; 582 noise findings from gitignored `logs/` harness
+  code. Fix direction: discovery via `git ls-files -co --exclude-standard`
+  (git-native, no new dependency), walker fallback for non-git repos,
+  config escape hatch. (2) Python detection requires a manifest — repos
+  with only `scripts/*.py`/`tests/*.py` and no pyproject.toml never see
+  ruff/mypy/vulture/scb-check. Fix: file-presence marker in detect.py,
+  generalizable to js/ts/sh. (3) actionlint missing from the run table
+  despite github-actions detection and an existing workflow file — needs
+  reproduction; hypotheses: language-slug mismatch detect↔adapter, or
+  missing-binary handling hiding it. Status: logged, not yet implemented
+  (user directive: info only).
 * **2026-11-24 — end-to-end verification day (caught 2 real bugs).** What:
   (a) fresh `pipx install polycheck` from PyPI → 0.3.0 correct, init writes
   reviewer agents, scan gates; (b) **real MCP stdio client** spawned
