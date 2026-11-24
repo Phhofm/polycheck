@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Features:
+  * New `scb-check` adapter: AI-slop metrics from SlopCodeBench —
+    duplicated AST blocks (DUPLICATION), slop patterns like
+    `range(len(x))` and `dict.get(k, None)` (LINT), and erosion
+    findings for functions above the complexity threshold (COMPLEXITY)
+
 ## 0.3.0 (2026-11-24)
 
 The reviewer release: polycheck becomes a delegable code-review step that
