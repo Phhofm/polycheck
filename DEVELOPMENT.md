@@ -109,6 +109,19 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-24 — reviewer subagent + pre-push gate shipped (0.3.0).** What:
+  `polycheck init` writes `polycheck-reviewer` subagent definitions for
+  Kilo/OpenCode/Claude (shared body: run via CLI, triage with verdicts, write
+  ranked checklist to `polycheck-reports/polycheck-review-checklist.md`,
+  persist FALSE-POSITIVEs to `.polycheck.yml` suppress, return compact
+  summary only), `--no-agents`/`--agents-only` flags, and
+  `--git-hook pre-push` dev-cycle gate (never overwrites existing hooks).
+  Host agent paths/formats follow each host's convention (Kilo
+  `.kilo/agent/` singular, Claude `.claude/agents/` plural); field names
+  should be re-verified against current host docs before advertising
+  Kilo/OpenCode agent support publicly. Tests: onboarding characterization
+  (configs parse, agents carry contract), no-agents/agents-only, git-hook
+  write/protect/validate. Version 0.3.0 released.
 * **2026-11-23 — end-to-end install test from PyPI caught a real release bug.**
   Metric: fresh `pipx install --force polycheck` (the published 0.2.0) →
   `polycheck --version`. Before: printed **0.1.0** while the wheel metadata

@@ -1,14 +1,29 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-24)
+
+The reviewer release: polycheck becomes a delegable code-review step that
+keeps the main chat clean.
 
 Features:
+  * `polycheck init` now writes a **`polycheck-reviewer` subagent** for
+    Kilo (`.kilo/agent/`), OpenCode (`.opencode/agent/`), and Claude
+    (`.claude/agents/`): it runs polycheck, triages every finding
+    (REAL BUG / REAL SMELL / FALSE POSITIVE / DEFERRED), writes a ranked,
+    actionable checklist to `polycheck-reports/polycheck-review-checklist.md`
+    (severity, tool:rule, exact location, concrete action, effort estimate),
+    persists FALSE-POSITIVE verdicts into `.polycheck.yml`, and returns only
+    a compact summary — the main chat stays clean
+  * `--no-agents` / `--agents-only` flags to control agent generation
+  * `polycheck init --git-hook pre-push` installs a dev-cycle quality gate
+    (`.git/hooks/pre-push` runs `polycheck run . --parallel --fail-on HIGH`;
+    never overwrites an existing hook)
+  * Guided workflow prefers the reviewer subagent when available
   * Vendored/build directories (`.venv`, `node_modules`, `dist`, `vendor`,
     …) are excluded from file-collecting analyzers — no more false
     positives from other people's code in dependency trees
   * MCP progress notifications (`notifications/progress`) during
     `polycheck.run` when the client requests them
-  * Category triage knowledge folded into the LLM triage prompt
 
 Simplifications:
   * MCP server slimmed to two tools (`polycheck.run`, `polycheck.audit_run`);
