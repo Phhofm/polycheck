@@ -109,6 +109,22 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-24 — 0.3.1 released; live-repo before/after measured.** The
+  three meta-findings fixed: (1) gitignore-aware discovery via
+  `git ls-files -co --exclude-standard` (walker fallback for non-git
+  repos) — verified on Philip's vibecode-skill repo: shellcheck noise
+  584 → 2 real findings, total findings all from project code;
+  (2) detection now uses walker-based file presence anywhere in the
+  project — the manifest-less repo detected "github-actions, shell,
+  python" and ruff/mypy/vulture/scb-check ran for the first time
+  (6+15+3+2 real findings surfaced); (3) actionlint had
+  `languages = []`, which the candidate filter (runner AND cli) treats
+  as never-matching — now `["github-actions"]`, appears in the run
+  table. Released v0.3.1, verified via PyPI JSON API. Post-release
+  E2E note: `pipx install polycheck` briefly served 0.3.0 from pip's
+  HTTP simple-index cache (~2 min window) — cleared `~/.cache/pip` and
+  0.3.1 installed correctly; not a polycheck bug, but part of the
+  post-release checklist (retry after cache expiry or clear the cache).
 * **2026-11-24 — first external live test found 3 meta-findings (from Philip's
   vibecode-skill repo run).** (1) Gitignored directories are scanned —
   `iter_source_files` + EXCLUDED_DIRS is a static denylist without
