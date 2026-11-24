@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.2 (2026-11-24)
+
+Features:
+  * `.polycheck.yml` `extra_args` now reaches the tool command lines
+    (`mypy: ["--python-executable", ".venv/bin/python"]` for project
+    venvs, ruff/eslint/semgrep/shellcheck/vulture/hadolint/tsc/knip/
+    depcheck/deptry/gitleaks/scb-check alike). pip-audit, npm-audit and
+    sonarless follow in a later release.
+
+Fixed:
+  * gitleaks regression caught by the seeded-defect verifier: a custom
+    `--config` replaces gitleaks' default ruleset — the generated
+    exclusion config now extends the defaults (`[extend] useDefault =
+    true`) so secrets are detected again while our paths stay excluded.
+
 ## 0.3.1 (2026-11-24)
 
 Fixes from the first external live test (Philip's vibecode-skill repo):
