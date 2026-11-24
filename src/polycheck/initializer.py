@@ -81,8 +81,13 @@ def resolve_agent_path(
     template = AGENT_TEMPLATES[host]
     if scope == "project":
         return project_root / template.path
-    if host in ("kilo", "opencode"):
-        return home / ".config" / host / "agent" / "polycheck-reviewer.md"
+    if host == "kilo":
+        # Global layout verified against a live Kilo install:
+        # ~/.config/kilo/agents/<name>.md
+        return home / ".config" / "kilo" / "agents" / "polycheck-reviewer.md"
+    if host == "opencode":
+        # OpenCode V2 docs: ~/.config/opencode/agents/<name>.md
+        return home / ".config" / "opencode" / "agents" / "polycheck-reviewer.md"
     return home / ".claude" / "agents" / "polycheck-reviewer.md"
 
 

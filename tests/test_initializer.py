@@ -268,7 +268,7 @@ def test_init_writes_reviewer_agents_for_all_hosts(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
 
     kilo_agent = tmp_path / ".kilo" / "agent" / "polycheck-reviewer.md"
-    opencode_agent = tmp_path / ".opencode" / "agent" / "polycheck-reviewer.md"
+    opencode_agent = tmp_path / ".opencode" / "agents" / "polycheck-reviewer.md"
     claude_agent = tmp_path / ".claude" / "agents" / "polycheck-reviewer.md"
     for agent in (kilo_agent, opencode_agent, claude_agent):
         assert agent.exists(), agent

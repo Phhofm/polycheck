@@ -216,7 +216,7 @@ AGENT_TEMPLATES: dict[str, AgentTemplate] = {
         "kilo", ".kilo/agent/polycheck-reviewer.md", KILO_AGENT,
     ),
     "opencode": AgentTemplate(
-        "opencode", ".opencode/agent/polycheck-reviewer.md", OPENCODE_AGENT,
+        "opencode", ".opencode/agents/polycheck-reviewer.md", OPENCODE_AGENT,
     ),
     "claude": AgentTemplate(
         "claude", ".claude/agents/polycheck-reviewer.md", CLAUDE_AGENT,
