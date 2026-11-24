@@ -46,9 +46,9 @@ class KnipTool(Tool):
         if shutil.which("knip") is None and shutil.which("npx") is None:
             return []
         if shutil.which("knip"):
-            cmd = ["knip", "--reporter=json", "--no-progress"]
+            cmd = ["knip", "--reporter=json", "--no-progress", *self.extra_args()]
         else:
-            cmd = ["npx", "knip", "--reporter=json", "--no-progress"]
+            cmd = ["npx", "knip", "--reporter=json", "--no-progress", *self.extra_args()]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

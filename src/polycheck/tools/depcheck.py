@@ -33,9 +33,9 @@ class DepcheckTool(Tool):
         # use text. -q makes it print only findings. Prefer the local
         # binary; npx needs the module name as its first argument.
         if shutil.which("depcheck"):
-            cmd = ["depcheck", ".", "-q", "--no-dev"]
+            cmd = ["depcheck", ".", "-q", "--no-dev", *self.extra_args()]
         else:
-            cmd = ["npx", "depcheck", ".", "-q", "--no-dev"]
+            cmd = ["npx", "depcheck", ".", "-q", "--no-dev", *self.extra_args()]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

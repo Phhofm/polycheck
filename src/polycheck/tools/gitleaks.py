@@ -59,6 +59,7 @@ class GitleaksTool(Tool):
                 "--report-path", str(report_path),
                 "--no-banner",
                 "--no-git",
+                *self.extra_args(),
                 "--source", str(repo),
             ]
             out = subprocess.run(

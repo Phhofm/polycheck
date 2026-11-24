@@ -43,7 +43,7 @@ class MypyTool(Tool):
         files = [str(p) for p in iter_source_files(repo, ("*.py",))]
         if not files:
             return []
-        cmd = ["mypy", "--no-error-summary", "--show-column", *files]
+        cmd = ["mypy", "--no-error-summary", "--show-column", *self.extra_args(), *files]
         if shutil.which("mypy") is None:
             return []
         out = subprocess.run(

@@ -726,3 +726,38 @@ def test_iter_source_files_non_git_falls_back_to_walker(tmp_path: Path):
     rel = [p.as_posix() for p in iter_source_files(tmp_path, ("*.sh",))]
 
     assert rel == ["script.sh"]
+
+
+def test_mypy_receives_extra_args_from_config(tmp_path: Path, monkeypatch):
+    """Meta-finding #4: `.polycheck.yml` extra_args must reach the tool's
+    command line (mypy --python-executable for project venvs)."""
+    from polycheck.config import Config
+    from polycheck.tools.mypy import MypyTool
+
+    (tmp_path / "app.py").write_text("import yaml\n")
+    cfg = Config()
+    cfg.extra_args = {"mypy": ["--python-executable", ".venv/bin/python"]}
+
+    monkeypatch.setattr(
+        "polycheck.tools.mypy.shutil.which",
+        lambda name: "/usr/local/bin/mypy" if name == "mypy" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.mypy.subprocess.run", fake_run)
+
+    MypyTool(config=cfg).run(tmp_path)
+
+    assert "--python-executable" in captured["cmd"]
+    assert ".venv/bin/python" in captured["cmd"]
+
+
+def test_tool_without_config_has_no_extra_args(tmp_path: Path):
+    from polycheck.tools.mypy import MypyTool
+
+    tool = MypyTool()
+    assert tool.extra_args() == []

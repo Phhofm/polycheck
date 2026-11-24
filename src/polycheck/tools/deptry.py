@@ -41,7 +41,7 @@ class DeptryTool(Tool):
         if shutil.which("deptry") is None:
             return []
         out = subprocess.run(
-            ["deptry", "."], cwd=repo, capture_output=True, text=True, timeout=300
+            ["deptry", *self.extra_args(), "."], cwd=repo, capture_output=True, text=True, timeout=300
         )
         # deptry exits non-zero when findings exist and prints them to
         # stderr (stdout carries progress notes only).

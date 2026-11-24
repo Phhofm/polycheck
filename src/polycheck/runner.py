@@ -110,7 +110,7 @@ class Runner:
         # Filter to installed + applicable.
         out: list[type] = []
         for cls in candidates:
-            inst = cls()
+            inst = cls(config=self.config)
             if not inst.is_installed():
                 continue
             if not inst.is_applicable(self.repo):
@@ -130,7 +130,7 @@ class Runner:
 
     def _run_one(self, tool_cls: type[Tool]) -> ToolResult:
         name = tool_cls.name
-        inst = tool_cls()
+        inst = tool_cls(config=self.config)
         start = time.monotonic()
         try:
             findings = inst.run(self.repo)

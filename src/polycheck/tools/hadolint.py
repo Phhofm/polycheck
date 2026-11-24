@@ -43,7 +43,7 @@ class HadolintTool(Tool):
         ]
         if not paths:
             return []
-        cmd = ["hadolint", "--no-fail", "--format", "gnu"] + paths
+        cmd = ["hadolint", "--no-fail", "--format", "gnu", *self.extra_args()] + paths
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=120
         )

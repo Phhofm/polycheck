@@ -57,9 +57,9 @@ class EslintTool(Tool):
         # Prefer the local binary if it exists; fall back to npx (which
         # needs the module name as its first argument).
         if shutil.which("eslint"):
-            cmd = ["eslint", "--format=json", "--no-warn-ignored", *files]
+            cmd = ["eslint", "--format=json", "--no-warn-ignored", *self.extra_args(), *files]
         else:
-            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", *files]
+            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", *self.extra_args(), *files]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

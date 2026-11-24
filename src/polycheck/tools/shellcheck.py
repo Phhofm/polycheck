@@ -40,7 +40,7 @@ class ShellcheckTool(Tool):
         if not files:
             return []
         # Use -f gcc for parseable one-line findings.
-        cmd = ["shellcheck", "-f", "gcc", "--severity=style", *files]
+        cmd = ["shellcheck", "-f", "gcc", "--severity=style", *self.extra_args(), *files]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

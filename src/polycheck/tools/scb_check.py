@@ -42,7 +42,7 @@ class ScbCheckTool(Tool):
         if shutil.which("scb-check") is None:
             return []
         out = subprocess.run(
-            ["scb-check", "check", "."],
+            ["scb-check", "check", ".", *self.extra_args()],
             cwd=repo, capture_output=True, text=True, timeout=600,
         )
         # Exit 1 = findings exist (normal); 2 = usage error.

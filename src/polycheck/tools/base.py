@@ -25,8 +25,12 @@ import shutil
 import subprocess
 from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 from ..finding import Category, Finding
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 # Directories that hold generated, vendored, or dependency code. Scanning
 # them produces false positives from other people's code — the exact
@@ -88,6 +92,20 @@ def _matching(
 
 
 class Tool(abc.ABC):
+    """Base class for all polycheck tool adapters."""
+
+    def __init__(self, config: Config | None = None):
+        # Optional config injection: adapters that support per-tool CLI
+        # customization read `.polycheck.yml` `extra_args` through
+        # self.extra_args(). Everything keeps working when config is
+        # absent (constructed as `cls()`).
+        self.config = config
+
+    def extra_args(self) -> list[str]:
+        """Per-tool extra CLI args from `.polycheck.yml` ``extra_args``."""
+        if self.config is None:
+            return []
+        return [str(a) for a in self.config.extra_args.get(self.name, [])]
     """Base class for analyzer wrappers."""
 
     #: Short identifier. Used in Finding.tool, in CLI output, in the

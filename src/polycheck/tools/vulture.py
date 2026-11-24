@@ -41,7 +41,7 @@ class VultureTool(Tool):
         if shutil.which("vulture") is None:
             return []
 
-        cmd = ["vulture"]
+        cmd = ["vulture", *self.extra_args()]
         # If the user has a whitelist at the repo root, pass it too.
         for name in (".vulture-whitelist.py", "vulture_whitelist.py"):
             wl = repo / name

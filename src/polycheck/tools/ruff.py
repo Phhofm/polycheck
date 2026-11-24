@@ -41,7 +41,7 @@ class RuffTool(Tool):
         return any(repo.glob("**/*.py")) or (repo / "pyproject.toml").exists()
 
     def run(self, repo: Path) -> list[Finding]:
-        cmd = ["ruff", "check", "--output-format=json", "--no-fix", "."]
+        cmd = ["ruff", "check", "--output-format=json", "--no-fix", *self.extra_args(), "."]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

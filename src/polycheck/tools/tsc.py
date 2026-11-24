@@ -39,9 +39,9 @@ class TscTool(Tool):
         # Prefer the local binary if it exists; fall back to npx (which
         # needs the module name as its first argument).
         if shutil.which("tsc"):
-            cmd = ["tsc", "--noEmit", "--pretty", "false"]
+            cmd = ["tsc", "--noEmit", "--pretty", "false", *self.extra_args()]
         else:
-            cmd = ["npx", "tsc", "--noEmit", "--pretty", "false"]
+            cmd = ["npx", "tsc", "--noEmit", "--pretty", "false", *self.extra_args()]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )
