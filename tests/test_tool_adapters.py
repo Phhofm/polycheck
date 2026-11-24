@@ -761,3 +761,39 @@ def test_tool_without_config_has_no_extra_args(tmp_path: Path):
 
     tool = MypyTool()
     assert tool.extra_args() == []
+
+
+def test_gitleaks_allowlist_excludes_gitignored_paths(monkeypatch, tmp_path: Path):
+    """Bigger-repo live test: ~1690 gitleaks hits came from gitignored
+    artifacts (build outputs, traces, backups). The generated config must
+    exclude the repo's ignored paths too."""
+    import subprocess
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / ".gitignore").write_text("client/test-results/\ndb_backup/\n")
+    traces = tmp_path / "client" / "test-results"
+    traces.mkdir(parents=True)
+    (traces / "trace.json").write_text('{"jwt": "x"}\n')
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+    monkeypatch.setattr(
+        "polycheck.tools.gitleaks.shutil.which",
+        lambda name: "/usr/bin/gitleaks" if name == "gitleaks" else None,
+    )
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+        config_arg = cmd[cmd.index("--config") + 1]
+        captured["config"] = Path(config_arg).read_text(encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.gitleaks.subprocess.run", fake_run)
+
+    GitleaksTool().run(tmp_path)
+
+    assert captured["cmd"], "gitleaks never ran"
+    config = captured["config"]
+    assert "test-results" in config, "gitignored dir missing from allowlist"
+    assert "db_backup" in config

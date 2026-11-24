@@ -39,6 +39,44 @@ _CONFIG = (
 )
 
 
+def _config_with_ignores(repo: Path) -> str:
+    """The exclusion config plus the repo's gitignored paths. Gitignored
+    artifacts (build outputs, traces with throwaway tokens, backups)
+    cannot enter the repo via push, so they stay out of the scan."""
+    ignored = _ignored_paths(repo)
+    extra = "\n".join(
+        f"    '''^{re.escape(p)}(/.*)?$'''," for p in ignored if p
+    )
+    paths_block = f"{_ALLOWLIST}\n{extra}\n" if extra else _ALLOWLIST
+    return (
+        "[extend]\n"
+        "useDefault = true\n\n"
+        "[allowlist]\n"
+        '  description = "polycheck internal, vendored, and gitignored exclusions"\n'
+        "  paths = [\n"
+        f"{paths_block}"
+        "  ]\n"
+    )
+
+
+def _ignored_paths(repo: Path) -> list[str]:
+    """Gitignored paths of the repo, collapsed to directories where
+    possible (``git ls-files -o -i --exclude-standard --directory``).
+    Non-git repos return nothing."""
+    if not (repo / ".git").exists():
+        return []
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "-o", "-i", "--exclude-standard", "--directory"],
+            cwd=repo, capture_output=True, text=True, timeout=60,
+        )
+        if out.returncode != 0:
+            return []
+        return [line.rstrip("/") for line in out.stdout.splitlines() if line]
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+
+
 class GitleaksTool(Tool):
     name = "gitleaks"
     category = Category.SECRETS
@@ -55,7 +93,7 @@ class GitleaksTool(Tool):
         with tempfile.TemporaryDirectory(prefix="polycheck-gitleaks-") as tmp_name:
             report_path = Path(tmp_name) / "gitleaks-report.json"
             config_path = Path(tmp_name) / "gitleaks.toml"
-            config_path.write_text(_CONFIG, encoding="utf-8")
+            config_path.write_text(_config_with_ignores(repo), encoding="utf-8")
             cmd = [
                 "gitleaks", "detect",
                 "--config", str(config_path),
