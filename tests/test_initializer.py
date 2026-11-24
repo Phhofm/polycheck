@@ -260,3 +260,90 @@ def test_init_writes_parseable_configs_and_frontmatter(tmp_path: Path, monkeypat
     assert "polycheck.run" in kilo_workflow
     assert "diff: true" in kilo_workflow
     assert "suppress:" in kilo_workflow
+
+
+def test_init_writes_reviewer_agents_for_all_hosts(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["init", "--host", "all", "--scope", "project", "--yes"])
+    assert result.exit_code == 0, result.output
+
+    kilo_agent = tmp_path / ".kilo" / "agent" / "polycheck-reviewer.md"
+    opencode_agent = tmp_path / ".opencode" / "agent" / "polycheck-reviewer.md"
+    claude_agent = tmp_path / ".claude" / "agents" / "polycheck-reviewer.md"
+    for agent in (kilo_agent, opencode_agent, claude_agent):
+        assert agent.exists(), agent
+
+    body = kilo_agent.read_text(encoding="utf-8")
+    assert "mode: subagent" in body
+    assert "polycheck-review-checklist.md" in body
+    assert "REAL BUG" in body and "FALSE POSITIVE" in body
+    assert "suppress:" in body
+    claude_body = claude_agent.read_text(encoding="utf-8")
+    assert "name: polycheck-reviewer" in claude_body
+    assert "tools:" in claude_body
+
+
+def test_init_no_agents_and_agents_only(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "project", "--yes", "--no-agents"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / ".kilo" / "agent" / "polycheck-reviewer.md").exists()
+    assert (tmp_path / ".kilo" / "commands" / "polycheck.md").exists()
+
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "project", "--yes", "--agents-only", "--force"]
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / ".kilo" / "agent" / "polycheck-reviewer.md").exists()
+
+
+def test_init_git_hook_pre_push(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "project", "--yes",
+              "--no-mcp", "--no-agents", "--git-hook", "pre-push"]
+    )
+    assert result.exit_code == 0, result.output
+
+    hook = tmp_path / ".git" / "hooks" / "pre-push"
+    assert hook.exists()
+    import os
+    assert os.access(hook, os.X_OK)
+    content = hook.read_text(encoding="utf-8")
+    assert "polycheck run . --parallel --fail-on HIGH" in content
+    assert "exit 1" in content
+
+
+def test_init_git_hook_never_overwrites_existing(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    hook = tmp_path / ".git" / "hooks" / "pre-push"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nmy-custom-hook\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "project", "--yes",
+              "--no-mcp", "--no-agents", "--git-hook", "pre-push"]
+    )
+    assert result.exit_code == 0, result.output
+    assert hook.read_text(encoding="utf-8") == "#!/bin/sh\nmy-custom-hook\n"
+    assert "already exists" in result.output
+
+
+def test_init_git_hook_rejects_unknown_hook_and_global_scope(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "project", "--yes", "--git-hook", "post-commit"]
+    )
+    assert result.exit_code == 2
+
+    result = CliRunner().invoke(
+        app, ["init", "--host", "kilo", "--scope", "global", "--yes", "--git-hook", "pre-push"]
+    )
+    assert result.exit_code == 2

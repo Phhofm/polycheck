@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .workflows import WORKFLOW_TEMPLATES
+from .workflows import AGENT_TEMPLATES, WORKFLOW_TEMPLATES
 
 HOSTS = ("kilo", "opencode", "claude")
+GIT_HOOKS = ("pre-push",)
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,27 @@ def resolve_workflow_path(
     return home / ".claude" / "skills" / "polycheck" / "SKILL.md"
 
 
+def resolve_agent_path(
+    *,
+    host: str,
+    scope: str,
+    project_root: Path,
+    home: Path,
+) -> Path:
+    """Resolve where the reviewer subagent definition should live."""
+    template = AGENT_TEMPLATES[host]
+    if scope == "project":
+        return project_root / template.path
+    if host in ("kilo", "opencode"):
+        return home / ".config" / host / "agent" / "polycheck-reviewer.md"
+    return home / ".claude" / "agents" / "polycheck-reviewer.md"
+
+
+def resolve_git_hook_path(*, project_root: Path, hook: str) -> Path:
+    """Resolve a git hook path inside the project's .git directory."""
+    return project_root / ".git" / "hooks" / hook
+
+
 def resolve_mcp_config_path(
     *,
     host: str,
@@ -106,6 +128,8 @@ def build_plan(
     home: Path,
     include_workflows: bool = True,
     include_mcp: bool = True,
+    include_agents: bool = True,
+    git_hook: str | None = None,
 ) -> list[InitAction]:
     """Build all file actions for an initializer run."""
     actions: list[InitAction] = []
@@ -116,6 +140,20 @@ def build_plan(
                     host=host,
                     kind="workflow",
                     path=resolve_workflow_path(
+                        host=host,
+                        scope=scope,
+                        project_root=project_root,
+                        home=home,
+                    ),
+                    status="planned",
+                )
+            )
+        if include_agents:
+            actions.append(
+                InitAction(
+                    host=host,
+                    kind="agent",
+                    path=resolve_agent_path(
                         host=host,
                         scope=scope,
                         project_root=project_root,
@@ -150,6 +188,17 @@ def build_plan(
                         status="planned",
                     )
                 )
+    if git_hook:
+        actions.append(
+            InitAction(
+                host="git",
+                kind="git-hook",
+                path=resolve_git_hook_path(
+                    project_root=project_root, hook=git_hook
+                ),
+                status="planned",
+            )
+        )
     return actions
 
 
@@ -164,9 +213,77 @@ def apply_plan(
     for action in actions:
         if action.kind == "workflow":
             results.append(_apply_workflow_action(action, force=force, dry_run=dry_run))
+        elif action.kind == "agent":
+            results.append(_apply_agent_action(action, force=force, dry_run=dry_run))
         elif action.kind == "mcp":
             results.append(_apply_mcp_action(action, force=force, dry_run=dry_run))
+        elif action.kind == "git-hook":
+            results.append(_apply_git_hook_action(action, force=force, dry_run=dry_run))
     return results
+
+
+def _apply_agent_action(
+    action: InitAction,
+    *,
+    force: bool,
+    dry_run: bool,
+) -> InitAction:
+    path = action.path
+    if path is None:
+        return InitAction(
+            host=action.host, kind=action.kind, path=None,
+            status="skipped", message="no path",
+        )
+    if path.exists() and not force:
+        return InitAction(
+            host=action.host, kind=action.kind, path=path,
+            status="skipped",
+            message="already exists; pass --force to overwrite",
+        )
+    if dry_run:
+        return InitAction(
+            host=action.host, kind=action.kind, path=path,
+            status="planned",
+            message="would write agent" if not path.exists() else "would overwrite agent",
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(AGENT_TEMPLATES[action.host].content, encoding="utf-8")
+    return InitAction(
+        host=action.host, kind=action.kind, path=path,
+        status="written", message="agent written",
+    )
+
+
+def _apply_git_hook_action(
+    action: InitAction,
+    *,
+    force: bool,
+    dry_run: bool,
+) -> InitAction:
+    path = action.path
+    if path is None:
+        return action
+    if path.exists() and not force:
+        return InitAction(
+            host=action.host, kind=action.kind, path=path,
+            status="skipped",
+            message="hook already exists; never overwritten without --force",
+        )
+    if dry_run:
+        return InitAction(
+            host=action.host, kind=action.kind, path=path,
+            status="planned",
+            message="would write git hook",
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    hook = path.name  # the file name IS the hook name (e.g. "pre-push")
+    script = _git_hook_script(hook)
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+    return InitAction(
+        host=action.host, kind=action.kind, path=path,
+        status="written", message=f"{hook} hook written (runs polycheck before push)",
+    )
 
 
 def _apply_workflow_action(
@@ -313,6 +430,26 @@ def _strip_json_comments(text: str) -> str:
     """Return text with simple // and /* */ comments removed for detection."""
     without_line = re.sub(r"//.*", "", text)
     return re.sub(r"/\*.*?\*/", "", without_line, flags=re.DOTALL)
+
+
+def _git_hook_script(hook: str) -> str:
+    """The polycheck gate script for a git hook."""
+    if hook == "pre-push":
+        return (
+            "#!/bin/sh\n"
+            "# polycheck review gate — blocks the push on HIGH+ findings.\n"
+            "# Installed by `polycheck init --git-hook pre-push`.\n"
+            "polycheck run . --parallel --fail-on HIGH || {\n"
+            "  echo 'polycheck found HIGH+ findings — push blocked.'\n"
+            "  echo 'Triage them or suppress false positives in .polycheck.yml.'\n"
+            "  exit 1\n"
+            "}\n"
+        )
+    return (
+        "#!/bin/sh\n"
+        f"# polycheck {hook} hook — no behavior defined.\n"
+        "exit 0\n"
+    )
 
 
 def format_action(action: InitAction) -> str:

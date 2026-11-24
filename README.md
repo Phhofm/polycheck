@@ -203,6 +203,8 @@ polycheck baseline .                       # snapshot current findings
 polycheck run . --diff                     # only findings NEW since the baseline
 polycheck init --host all --scope global   # initialize /polycheck workflows
 polycheck init --dry-run --host all        # preview initialization
+polycheck init --host all --agents-only    # write only the reviewer subagent
+polycheck init --scope project --git-hook pre-push   # dev-cycle quality gate
 polycheck doctor                           # show installed/missing tools, exit 0 by default
 polycheck doctor --fail-on-missing         # exit 1 when tools are missing
 polycheck install                          # install every missing tool
@@ -271,6 +273,47 @@ The default `pytest` run includes the heavy smoke test only when the tools are
 already installed or can be skipped safely; use `polycheck verify-tools
 --install --yes --include-heavy` when you explicitly want install-and-run
 coverage for every supported analyzer.
+
+### The reviewer subagent (keeps the main chat clean)
+
+`polycheck init` also writes a **`polycheck-reviewer` subagent** for each
+host (Kilo: `.kilo/agent/`, OpenCode: `.opencode/agent/`, Claude:
+`.claude/agents/`). The review flow then looks like this:
+
+1. You (or the LLM, or a pre-push trigger) ask for a code review.
+2. The main LLM **delegates to the `polycheck-reviewer` subagent** — your
+   main chat stays clean, no report noise.
+3. The subagent runs polycheck, triages every finding
+   (REAL BUG / REAL SMELL / FALSE POSITIVE / DEFERRED), and writes a
+   **ranked, actionable checklist** to
+   `polycheck-reports/polycheck-review-checklist.md` — each item with
+   severity, `tool:rule`, exact location, a concrete suggested action, and
+   an effort estimate. FALSE-POSITIVE verdicts land durably in
+   `.polycheck.yml` `suppress:`.
+4. The subagent returns only a compact summary (counts + top actions).
+5. The main LLM walks the checklist with you: tackle everything, or only
+   HIGH+, and re-judges any item before acting on it.
+
+Skip the agents with `--no-agents`, or write only them with `--agents-only`:
+
+```bash
+polycheck init --host all --scope project --agents-only
+```
+
+### The dev-cycle trigger: pre-push gate
+
+Wire polycheck into the development loop so quality is checked before it
+leaves your machine:
+
+```bash
+polycheck init --scope project --git-hook pre-push
+```
+
+This installs a `.git/hooks/pre-push` gate that runs
+`polycheck run . --parallel --fail-on HIGH` and blocks the push on HIGH+
+findings (it never overwrites an existing hook). Triage or suppress, then
+push. Pair it with `polycheck baseline` + `run --diff` so the gate only
+judges what changed.
 
 ### The Triage Prompt
 

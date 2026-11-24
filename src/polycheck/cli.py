@@ -32,6 +32,7 @@ from .config import Config
 from .detect import detect
 from .finding import Finding
 from .initializer import (
+    GIT_HOOKS,
     HOSTS,
     apply_plan,
     build_plan,
@@ -483,6 +484,21 @@ def init_cmd(
         "--mcp-only",
         help="Write MCP config only; do not write slash-command workflow files.",
     ),
+    no_agents: bool = typer.Option(
+        False,
+        "--no-agents",
+        help="Do not write the polycheck-reviewer subagent definitions.",
+    ),
+    agents_only: bool = typer.Option(
+        False,
+        "--agents-only",
+        help="Write only the polycheck-reviewer subagent definitions.",
+    ),
+    git_hook: str = typer.Option(
+        None,
+        "--git-hook",
+        help="Install a git hook as a dev-cycle trigger. Supported: pre-push.",
+    ),
 ) -> None:
     """Initialize /polycheck for Kilo Code, OpenCode, and Claude Code."""
     selected_scope = scope.lower()
@@ -491,6 +507,19 @@ def init_cmd(
         raise typer.Exit(2)
     if no_mcp and mcp_only:
         console.print("[red]Use either --no-mcp or --mcp-only, not both.[/red]")
+        raise typer.Exit(2)
+    if no_agents and agents_only:
+        console.print("[red]Use either --no-agents or --agents-only, not both.[/red]")
+        raise typer.Exit(2)
+    if git_hook and git_hook not in GIT_HOOKS:
+        console.print(
+            f"[red]Unknown git hook '{git_hook}'. Supported: {', '.join(GIT_HOOKS)}.[/red]"
+        )
+        raise typer.Exit(2)
+    if git_hook and selected_scope != "project":
+        console.print(
+            "[red]--git-hook writes into .git/hooks and requires --scope project.[/red]"
+        )
         raise typer.Exit(2)
 
     try:
@@ -506,8 +535,10 @@ def init_cmd(
         scope=selected_scope,
         project_root=project_root,
         home=home,
-        include_workflows=not mcp_only,
-        include_mcp=not no_mcp,
+        include_workflows=not mcp_only and not agents_only,
+        include_mcp=not no_mcp and not agents_only,
+        include_agents=not no_agents and not mcp_only,
+        git_hook=git_hook,
     )
 
     console.print(f"[bold]polycheck init[/bold] — {selected_scope} scope")

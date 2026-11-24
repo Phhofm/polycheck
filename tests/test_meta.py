@@ -37,3 +37,22 @@ def test_workflow_templates_have_required_frontmatter():
     for name, template in WORKFLOW_TEMPLATES.items():
         assert template.content.startswith("---"), f"{name} template lacks frontmatter"
         assert "description:" in template.content, f"{name} template lacks description"
+
+
+def test_agent_templates_have_required_frontmatter_and_contract():
+    """Reviewer agents must be subagent-scoped and carry the checklist
+    contract so the main chat stays clean."""
+    from polycheck.workflows import AGENT_TEMPLATES
+
+    for name, template in AGENT_TEMPLATES.items():
+        assert template.content.startswith("---"), f"{name} agent lacks frontmatter"
+        assert "description:" in template.content, f"{name} agent lacks description"
+        assert "polycheck-review-checklist.md" in template.content, (
+            f"{name} agent does not write the checklist artifact"
+        )
+        assert "mode: subagent" in template.content or "tools:" in template.content, (
+            f"{name} agent is not scoped as a subagent"
+        )
+        # The return contract keeps the main chat clean.
+        assert "Nothing else" in template.content
+        assert "REAL BUG" in template.content and "FALSE POSITIVE" in template.content
