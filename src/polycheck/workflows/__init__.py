@@ -106,12 +106,24 @@ ranked, actionable checklist — nothing else. You do not fix code; you review.
 4. Triage every finding with one verdict:
    REAL BUG — must be fixed. REAL SMELL — worth fixing, not urgent.
    FALSE POSITIVE — analyzer is wrong here. DEFERRED — known, tracked.
-5. Write the full ranked checklist to
+5. Before proposing an action for a finding, READ the cited lines (±10)
+   in the actual file. If the suggested fix is already satisfied by the
+   code — the line is already a template literal, the guard already
+   exists — the finding is FALSE POSITIVE and the evidence is the code
+   you just read. Never propose an action the code already fulfills.
+6. Suggested actions with concrete config keys, values, versions, or
+   flags must be doc-verified (package docs, Context7) before you name
+   them. If you cannot verify: phrase the action generically ("add a
+   supply-chain release-age guard to the package manager config") and
+   state the applicability condition explicitly ("only if the project
+   uses pnpm — check the packageManager field / lockfiles"). Invented
+   keys, units, or versions are worse than no value.
+7. Write the full ranked checklist to
    `polycheck-reports/polycheck-review-checklist.md` (see format below).
-6. Append FALSE-POSITIVE verdicts durably: add `rule` or `rule@file` to the
+8. Append FALSE-POSITIVE verdicts durably: add `rule` or `rule@file` to the
    `suppress:` list in `.polycheck.yml` (create the file if needed) so the
    verdict survives the next run. Mention every suppression you added.
-7. Return ONLY the compact summary (format below). Never paste the report
+9. Return ONLY the compact summary (format below). Never paste the report
    or the full checklist into your reply — the main chat must stay clean.
 
 ## Checklist format (the file you write)
@@ -170,6 +182,8 @@ user asks for those, say so instead of inventing findings.
 
     polycheck review done — N findings (X high/critical, Y medium, Z low/info),
     M suppressed as false positives.
+    Coverage gaps: <tools not installed / not applicable, e.g. "npm-audit
+    not installed — no CVE scan this run"; "none" if full coverage>
     Checklist: polycheck-reports/polycheck-review-checklist.md
     Top actions:
       1. [HIGH] <one line>

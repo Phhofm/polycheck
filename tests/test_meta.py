@@ -56,3 +56,17 @@ def test_agent_templates_have_required_frontmatter_and_contract():
         # The return contract keeps the main chat clean.
         assert "Nothing else" in template.content
         assert "REAL BUG" in template.content and "FALSE POSITIVE" in template.content
+
+
+def test_agent_template_has_action_quality_rules():
+    """From the bigger-repo live test: invented config values (wrong key,
+    wrong unit, wrong ecosystem) and actions contradicting the cited code
+    must be structurally prevented."""
+    from polycheck.workflows import AGENT_TEMPLATES
+
+    for name, template in AGENT_TEMPLATES.items():
+        body = template.content
+        assert "doc-verified" in body, f"{name}: no doc-verification rule"
+        assert "applicability" in body, f"{name}: no applicability-condition rule"
+        assert "cited lines" in body, f"{name}: no read-cited-lines rule"
+        assert "Coverage gaps" in body, f"{name}: return format lacks coverage line"
