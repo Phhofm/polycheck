@@ -606,6 +606,36 @@ catch."* polycheck is that catch-all for agent-written code — including the
 [measurable slop metrics](https://www.scbench.ai) (verbosity, erosion) that
 quantify how agents degrade codebases over repeated changes.
 
+## Acknowledgments
+
+polycheck stands on the shoulders of the analyzers it orchestrates —
+[ruff](https://github.com/astral-sh/ruff), [mypy](https://www.mypy-lang.org/),
+[vulture](https://github.com/jendrikse/vulture),
+[semgrep](https://semgrep.dev), [gitleaks](https://github.com/gitleaks/gitleaks),
+[deptry](https://github.com/fpgmaas/deptry),
+[depcheck](https://github.com/depcheck/depcheck),
+[pip-audit](https://github.com/pypa/pip-audit),
+[npm-audit](https://docs.npmjs.com/cli/commands/npm-audit),
+[knip](https://knip.dev),
+[shellcheck](https://www.shellcheck.net),
+[hadolint](https://github.com/hadolint/hadolint),
+[actionlint](https://github.com/rhysd/actionlint),
+[tsc](https://www.typescriptlang.org/), eslint, and
+[SonarQube](https://www.sonarsource.com/open-code-edition/) via
+[sonarless](https://github.com/gitricko/sonarless) — plus
+[ast-grep](https://ast-grep.github.io) via
+[scb-check](https://github.com/gabeorlanski/scb-check).
+
+The anti-slop metrics build on **"SlopCodeBench: Benchmarking How Coding
+Agents Degrade Over Long-Horizon Iterative Tasks"**
+([arXiv:2603.24755](https://arxiv.org/abs/2603.24755),
+[scbench.ai](https://www.scbench.ai)) and are aligned with the
+[No AI Slop Manifesto](https://www.slopmanifesto.com/).
+
+Built with [MCP](https://modelcontextprotocol.io),
+[typer](https://typer.tiangolo.com/), [rich](https://rich.readthedocs.io/),
+[pydantic](https://docs.pydantic.dev/), and tree-sitter.
+
 ## Philosophy
 
   * **Static analyzers are cheap; reading code is expensive.**
