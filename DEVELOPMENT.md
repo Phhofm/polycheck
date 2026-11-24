@@ -139,6 +139,24 @@ after, verdict, reason.
   reproduction; hypotheses: language-slug mismatch detect↔adapter, or
   missing-binary handling hiding it. Status: logged, not yet implemented
   (user directive: info only).
+* **2026-11-24 — extra_args plumbing shipped; verifier caught a regression
+  in the same change.** Meta-finding #4 from the colleague loop:
+  `.polycheck.yml` `extra_args` existed in Config but never reached the
+  tools (adapters built commands without config knowledge). Fix: optional
+  config injection (`Tool.__init__(config=...)` + `extra_args()` helper),
+  Runner constructs tools with config, `*self.extra_args()` plumbed into
+  15 adapters (mypy, ruff, eslint ×2 paths, shellcheck, vulture, hadolint,
+  tsc ×2, knip ×2, depcheck ×2, deptry, gitleaks, scb-check). pip-audit/
+  npm-audit/sonarless deferred (heavy/complex). While re-running the
+  seeded-defect verifier after the sweep, gitleaks reported
+  `missed-defects` — the verifier caught that the exclusion-config commit
+  had broken detection entirely: gitleaks `--config` REPLACES the default
+  ruleset, and our generated allowlist config had no rules. Fixed with
+  `[extend] useDefault = true`. Verdict: KEPT; the verifier guarding every
+  adapter change is doing its job.
+  Also noted (meta-finding #5, not actionable in polycheck): semgrep inline
+  `# nosemgrep` does not suppress taint-mode rules — semgrep engine
+  behavior, documented in the colleague loop.
 * **2026-11-24 — end-to-end verification day (caught 2 real bugs).** What:
   (a) fresh `pipx install polycheck` from PyPI → 0.3.0 correct, init writes
   reviewer agents, scan gates; (b) **real MCP stdio client** spawned

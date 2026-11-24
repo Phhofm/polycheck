@@ -27,6 +27,10 @@ _ALLOWLIST = "\n".join(
 )
 
 _CONFIG = (
+    # --config REPLACES gitleaks' default ruleset; extend it so our
+    # allowlist applies on top of the standard rules.
+    "[extend]\n"
+    "useDefault = true\n\n"
     "[allowlist]\n"
     '  description = "polycheck internal and vendored exclusions"\n'
     "  paths = [\n"
