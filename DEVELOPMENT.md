@@ -109,6 +109,20 @@ after, verdict, reason.
   → check_untyped_defs + no_implicit_optional + warn_unused_ignores +
   warn_redundant_casts; dev extras gained types-PyYAML/types-requests.
   No `# type: ignore` added. Verdict: KEPT. All three gates now green.
+* **2026-11-24 — end-to-end verification day (caught 2 real bugs).** What:
+  (a) fresh `pipx install polycheck` from PyPI → 0.3.0 correct, init writes
+  reviewer agents, scan gates; (b) **real MCP stdio client** spawned
+  `polycheck mcp`, listed exactly 2 tools + resources, called
+  `polycheck.run` → correct guided payload incl. `needs_user_input` on
+  missing analyzers; (c) **real pre-push gate test**: bare remote + hook →
+  push with HIGH findings blocked ("polycheck found HIGH+ findings"), fix →
+  push lands. Test (c) exposed a real product bug: gitleaks/semgrep scanned
+  `polycheck-reports/` — self-referential contamination (reports embed
+  finding texts, next run flags them as secrets). Fixed via gitleaks
+  native config allowlist (generated temp TOML with path regexes from
+  EXCLUDED_DIRS) and semgrep `--exclude` flags; sonarless noted (opt-in
+  heavy tool, defer). Verdict: KEPT — these end-to-end tests are now the
+  standard post-release checks.
 * **2026-11-24 — scb-check adapter (AI-slop metrics) shipped.** What: new
   adapter for [scb-check](https://github.com/gabeorlanski/scb-check)
   (SlopCodeBench verbosity/erosion model): parses human output into
