@@ -781,12 +781,14 @@ def test_gitleaks_allowlist_excludes_gitignored_paths(monkeypatch, tmp_path: Pat
         "polycheck.tools.gitleaks.shutil.which",
         lambda name: "/usr/bin/gitleaks" if name == "gitleaks" else None,
     )
-    captured = {}
+    captured: dict = {}
 
     def fake_run(cmd, **kwargs):
         captured["cmd"] = list(cmd)
-        config_arg = cmd[cmd.index("--config") + 1]
-        captured["config"] = Path(config_arg).read_text(encoding="utf-8")
+        if "--config" in cmd:
+            config_arg = cmd[cmd.index("--config") + 1]
+            captured["config"] = Path(config_arg).read_text(encoding="utf-8")
+        # git ls-files from _ignored_paths passes through untouched
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr("polycheck.tools.gitleaks.subprocess.run", fake_run)
