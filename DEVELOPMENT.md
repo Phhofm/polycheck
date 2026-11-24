@@ -157,6 +157,16 @@ after, verdict, reason.
   Also noted (meta-finding #5, not actionable in polycheck): semgrep inline
   `# nosemgrep` does not suppress taint-mode rules — semgrep engine
   behavior, documented in the colleague loop.
+* **2026-11-24 — release-process miss on 0.3.2, self-caught.** Two chained
+  mistakes: (1) the 0.3.2 changelog insert was a silent no-op (its search
+  anchor "## Unreleased" no longer existed) — the consistency test caught
+  it immediately; (2) the release command chain used `;` before the git
+  steps instead of `&&`, so the tag was pushed despite the red gate —
+  against the project's own rule. Recovery: changelog fixed (the wheel
+  itself was correct: pyproject 0.3.2, PyPI accepted it), consistency test
+  green, docs commit pushed. Rule going forward: release chains use `&&`
+  end to end; a red gate stops the chain. Also: the replace-style
+  changelog edits need an assert-anchored insert, not a silent replace.
 * **2026-11-24 — end-to-end verification day (caught 2 real bugs).** What:
   (a) fresh `pipx install polycheck` from PyPI → 0.3.0 correct, init writes
   reviewer agents, scan gates; (b) **real MCP stdio client** spawned
