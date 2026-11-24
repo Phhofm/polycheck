@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 (2026-11-24)
+
+Fixes from the first external live test (Philip's vibecode-skill repo):
+  * Gitignored directories are no longer scanned — discovery uses
+    `git ls-files -co --exclude-standard` in git repos (walker fallback
+    elsewhere). A repo with gitignored harness code dropped from 591
+    findings to 39, all from project code.
+  * Language detection works from file presence anywhere in the project
+    (`.py`, `.ts`, `.sh`, ...), not only from manifests at the root —
+    repos without `pyproject.toml` now run ruff/mypy/vulture/scb-check.
+  * actionlint is no longer silently dropped from every run (it declared
+    no languages, so the candidate filter excluded it).
+
 ## Unreleased
 
 Features:
