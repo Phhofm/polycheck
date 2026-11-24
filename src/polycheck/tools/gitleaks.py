@@ -4,17 +4,35 @@ We run ``gitleaks detect --no-git`` which scans the working tree only
 (faster, no clone dependency), writing its JSON report to a temp file
 via ``--report-path`` (stdout behavior differs between gitleaks
 versions). gitleaks exits 1 when leaks are found; that's normal.
+
+A generated config allowlist excludes polycheck's own artifacts
+(``polycheck-reports/``, ``.polycheck/``) plus vendored/build dirs —
+without it, gitleaks re-scans our report files and flags finding texts
+from the previous run (self-referential noise).
 """
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import EXCLUDED_DIRS, Tool
+
+_ALLOWLIST = "\n".join(
+    f"    '''{re.escape(d)}/'''," for d in sorted(EXCLUDED_DIRS)
+)
+
+_CONFIG = (
+    "[allowlist]\n"
+    '  description = "polycheck internal and vendored exclusions"\n'
+    "  paths = [\n"
+    f"{_ALLOWLIST}\n"
+    "  ]\n"
+)
 
 
 class GitleaksTool(Tool):
@@ -32,8 +50,11 @@ class GitleaksTool(Tool):
             return []
         with tempfile.TemporaryDirectory(prefix="polycheck-gitleaks-") as tmp_name:
             report_path = Path(tmp_name) / "gitleaks-report.json"
+            config_path = Path(tmp_name) / "gitleaks.toml"
+            config_path.write_text(_CONFIG, encoding="utf-8")
             cmd = [
                 "gitleaks", "detect",
+                "--config", str(config_path),
                 "--report-format", "json",
                 "--report-path", str(report_path),
                 "--no-banner",

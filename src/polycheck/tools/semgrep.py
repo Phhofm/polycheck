@@ -46,6 +46,13 @@ class SemgrepTool(Tool):
             "--quiet",
             "--error",    # exit non-zero on findings so we can ignore the code
             "--no-rewrite-rule-ids",
+            # Never scan polycheck's own artifacts or vendored trees.
+            "--exclude=polycheck-reports/**",
+            "--exclude=.polycheck/**",
+            "--exclude=.venv/**",
+            "--exclude=node_modules/**",
+            "--exclude=dist/**",
+            "--exclude=vendor/**",
         ]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=600

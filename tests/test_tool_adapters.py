@@ -114,15 +114,20 @@ def _fake_gitleaks(monkeypatch, tmp_path: Path, returncode: int, report: list | 
         lambda name: "/usr/bin/gitleaks" if name == "gitleaks" else None,
     )
     captured = {}
+    written_configs = []
 
     def fake_run(cmd, **kwargs):
         captured["cmd"] = list(cmd)
+        if "--config" in cmd:
+            config_path = Path(cmd[cmd.index("--config") + 1])
+            written_configs.append(config_path.read_text(encoding="utf-8"))
         if report is not None:
             report_path = Path(cmd[cmd.index("--report-path") + 1])
             report_path.write_text(json.dumps(report), encoding="utf-8")
         return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr="")
 
     monkeypatch.setattr("polycheck.tools.gitleaks.subprocess.run", fake_run)
+    captured["configs"] = written_configs
     return captured
 
 
@@ -149,6 +154,11 @@ def test_gitleaks_parses_report_file_and_scans_working_tree(
     assert "--no-git" in captured["cmd"]
     assert "--report-path" in captured["cmd"]
     assert "--report-format" in captured["cmd"]
+    # The generated config must exclude polycheck's own artifacts and
+    # vendored trees — otherwise gitleaks re-scans our report files.
+    assert captured["configs"], "no --config written"
+    assert "polycheck" in captured["configs"][0]
+    assert "node_modules/" in captured["configs"][0]
 
 
 def test_gitleaks_no_report_file_means_no_findings(monkeypatch, tmp_path: Path):
