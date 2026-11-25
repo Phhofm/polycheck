@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.10 (2026-11-25)
+
+**`ts-slop` — polycheck's own TypeScript slop rule set** (first
+extension of the SlopCodeBench approach beyond Python):
+
+  * New adapter running **polycheck-authored ast-grep rules** for
+    TypeScript: index `for` loops over arrays, type-system escape
+    hatches (`as any`, `as unknown as T`, empty-object casts,
+    `@ts-ignore`), empty catch blocks, and mechanical verbosity
+    (`!!x`, if/else returning booleans). Why authored, not ported:
+    scb-check 0.2.0 ships 197 rules, all Python, and its extra-rules
+    mechanism does not reach the analysis pipeline (verified in
+    source) — the degradation forms are agent behavior, so the rules
+    are written fresh per language, not translated.
+  * ast-grep ships via `npm:@ast-grep/cli` with an npx fallback
+    (package-name form — `npx ast-grep` cannot resolve the bin);
+    Windows-safe via the 0.3.9 `cmd /c` routing.
+  * Rule file ships as package data; every rule verified against a
+    seeded TypeScript defect; seeded-verifier expectation `ts-slop: 2`
+    verified `ok` against the real binary (0.5 s).
+  * Known gap, documented with evidence: Vue SFCs (`.vue`) are
+    silently skipped by ast-grep 0.51 (no builtin language) — `.ts`
+    files (NestJS backends, Ionic services) are covered fully.
+
 ## 0.3.9 (2026-11-25)
 
   * **Fixed: the npm-family npx/npm fallbacks crashed on Windows**
