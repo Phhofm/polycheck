@@ -6,8 +6,10 @@ Single log for progress, decisions, and experiments. Task checklists live in
 
 ## Next session start here
 
-0.3.4 (profiles, tach, quality questions) shipped and released — see the
-0.3.4 experiments entry below for evidence and the three audit fixes.
+0.3.4 (profiles, tach, quality questions) and 0.3.5 (pr-scope gate-hole
+fix) shipped and released — see the 0.3.4/0.3.5 experiment entries below
+for evidence and the audit fixes. The 0.3.5 lesson is the headline: the
+post-release pipx E2E caught a gate hole the pre-release runs missed.
 
 Suggested next block (from the backlog, one per iteration, D1):
 
@@ -45,10 +47,10 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 201 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 202 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
-Latest release: **0.3.4** (tagged this session; verify on PyPI after the
-publish workflow finishes). v0.3.0–v0.3.3 all released via Trusted
+Latest release: **0.3.5** (tagged this session; verify on PyPI after the
+publish workflow finishes). v0.3.0–v0.3.4 all released via Trusted
 Publishing. CI note: GitHub runner capacity queued test-matrix runs for
 hours on 2026-11-23/24 — Release workflows stayed green; local gates are
 the verification chain.
@@ -163,10 +165,25 @@ after, verdict, reason.
   src/new.py findings in scope, exit 1 after planting a HIGH F821 in the
   changed file; deep ran pip-audit/semgrep/sonarless and exited 0),
   bare-remote pre-push hook E2E (HIGH finding in changed file → push
-  blocked; fix → push lands). Process note: a scratch-repo `git add -A
+  blocked; fix → push lands). Process note: a   scratch-repo `git add -A
   && git commit` ran in this repo by mistake (cwd reset) — accidental
   tach.toml commit reset immediately (`git reset a0798b3`), lesson
   recorded in environment notes. Verdict: KEPT.
+
+* **2026-11-25 — 0.3.5: pr-scope gate hole found by the post-release E2E.**
+  Hypothesis check during the fresh-pipx E2E: on a repo with no upstream
+  (first push to a fresh remote), `changed_files()` returned only the
+  working-tree diff — the scope was empty once everything was committed,
+  and a committed HIGH finding pushed to a new remote sailed through the
+  pre-push gate. That is the exact silent-nothing failure mode D1 bans.
+  Metric: `polycheck run . --profile pr --tool mypy` on a no-upstream repo
+  with a committed HIGH finding. Before: exit 0, "0 changed tracked
+  file(s) in scope". After (0.3.5): exit 1, all tracked files in scope —
+  no upstream means nothing has been pushed yet, so everything tracked is
+  pushable and must be gated. The with-upstream path (merge-base + working
+  tree) is unchanged. Verdict: KEPT. Process note: the fix could not ride
+  on v0.3.4 (already published) — new release 0.3.5 instead of rewriting
+  shared history.
 
 * **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
   bigger-repo test.** Live-test feedback turned into features: (1) track

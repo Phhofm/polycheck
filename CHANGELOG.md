@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.5 (2026-11-25)
+
+Fixed:
+  * **`--profile pr` gate hole (found by the post-release pipx E2E)**: on
+    a repository with no upstream — the first push to a fresh remote —
+    the changed-file scope was empty once everything was committed, so a
+    committed HIGH finding could be pushed straight through the pre-push
+    gate. No upstream means nothing has been pushed yet: the pr scope now
+    covers every tracked file in that case (committed + staged), and the
+    gate blocks. Repositories with an upstream keep the narrow
+    merge-base + working-tree scope.
+
 ## 0.3.4 (2026-11-25)
 
 Profiles, the first structural adapter, and a cross-model audit of the
