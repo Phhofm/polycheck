@@ -89,7 +89,12 @@ class TsSlopTool(Tool):
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("ast-grep") is None and shutil.which("npx") is None:
             return []
-        cmd = [*self._command(repo), *self.extra_args(), str(repo)]
+        cmd = [*self._command(repo), *self.extra_args(), "."]
+        # The scan path is "." (relative, with cwd=repo): an absolute
+        # path makes ast-grep report ABSOLUTE file paths, which broke
+        # the track buckets (tracked files bucketed untracked), the
+        # pr change-scope matching, and fingerprint portability
+        # (live test #6).
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

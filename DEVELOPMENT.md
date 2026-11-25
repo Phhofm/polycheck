@@ -328,8 +328,33 @@ after, verdict, reason.
     runner while ubuntu/windows picked one up in seconds, leaving
     runs stuck "in progress" (and forcing Philip to cancel the 0.3.8
     CI run manually). Windows verified green via the cmd.exe spawn
-    fix; macOS coverage is suspended until capacity is dependable.
-  Verdict: KEPT. Next loop: zizmor.
+    fix;   macOS coverage is suspended until capacity is dependable.
+  Next loop: zizmor.
+
+* **2026-11-25 — external live test #6 (Loop 4, 0.3.11, ionic-vue-new:
+  ionic/vue frontend + nestjs backend) — two real polycheck bugs with
+  one shared root cause.** The deep run surfaced 1415 CRITICALs
+  (1408 from gitignored capacitor build assets in client/android +
+  client/ios — generic-api-key on minified bundle strings) and tracked
+  files bucketed "untracked". Root cause, confirmed by reproduction:
+  **gitleaks got `--source <absolute repo>` and reported ABSOLUTE file
+  paths**, so (a) the relative-anchored gitignore allowlist
+  (`^client/android/...`) never matched — the 0.3.3 gitignore-awareness
+  was silently dead in every run since (the gitleaks tests are
+  monkeypatch-fake and never exercised the allowlist against the real
+  binary), and (b) absolute `file` paths never matched the relative
+  `git ls-files` set — tracked files bucketed "untracked", pr
+  change-scope matching broken, and baseline fingerprints machine-
+  dependent. Fixes: `--source .` (relative, cwd=repo) for gitleaks and
+  the same for the ts-slop scan path (the only two adapters passing an
+  absolute path); regression tests: a REAL-binary nested-.gitignore
+  integration test (skipif no gitleaks — the monkeypatch-fake class of
+  test cannot catch flag-level path semantics) and a relative-scan-path
+  unit test. Side finding: self-scanning polycheck surfaced 3
+  secret-shaped strings in the repo (seeded defect in verify.py, test
+  fixture, documentation example) — all FALSE POSITIVE, suppressed
+  durably in .polycheck.yml with comments; repo back to 0 findings at
+  MEDIUM+. Verdict: KEPT.
 
 * **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
   insight: polycheck is driven by LLMs, but the operational knowledge

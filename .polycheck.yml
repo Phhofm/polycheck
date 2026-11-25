@@ -1,0 +1,14 @@
+# polycheck self-configuration — durable triage verdicts.
+# FALSE POSITIVE verdicts land here so they are never re-argued;
+# each suppression carries the reason it is legitimate.
+suppress:
+  # Test fixture: the seeded-defect string for the gitleaks verifier
+  # (tests/test_gitleaks_ignores.py) — not a real credential.
+  - generic-api-key@tests/test_gitleaks_ignores.py
+  # Documentation example in implementation_plan.md: the synthetic
+  # `ghp_…` pattern describing the seeded-defect switch — not a token.
+  - github-pat@implementation_plan.md
+  # Seeded defect: verify.py plants this AWS key for the gitleaks
+  # seeded-verifier expectation (`ts-slop`-style D1 gate) — it MUST
+  # exist or verify-tools reports missed-defects.
+  - generic-api-key@src/polycheck/verify.py

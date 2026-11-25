@@ -167,3 +167,27 @@ def test_shipped_rules_file_exists_and_has_only_ts_rules():
     assert all(d["language"] == "ts" for d in docs)
     ids = {d["id"] for d in docs}
     assert {"ts-for-index", "ts-as-unknown-as", "ts-ignore-comment"} <= ids
+
+
+def test_scan_path_is_relative_so_findings_are_relative(monkeypatch, tmp_path: Path):
+    """Live-test leak: passing the repo ABSOLUTE to ast-grep made
+    findings carry absolute file paths — which broke the track buckets
+    (tracked files bucketed untracked), the pr change-scope matching,
+    and baseline fingerprint portability across machines."""
+    (tmp_path / "service.ts").write_text("x\n")
+    monkeypatch.setattr(
+        "polycheck.tools.ts_slop.shutil.which",
+        lambda name: "/usr/bin/ast-grep" if name == "ast-grep" else None,
+    )
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = list(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr("polycheck.tools.ts_slop.subprocess.run", fake_run)
+
+    TsSlopTool().run(tmp_path)
+
+    scan_path = captured["cmd"][-1]
+    assert not Path(scan_path).is_absolute(), scan_path

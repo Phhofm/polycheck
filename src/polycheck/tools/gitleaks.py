@@ -106,7 +106,14 @@ class GitleaksTool(Tool):
                 "--no-banner",
                 "--no-git",
                 *self.extra_args(),
-                "--source", str(repo),
+                # Relative source: gitleaks then reports repo-relative
+                # file paths, which (a) match the relative-anchored
+                # gitignore allowlist and (b) keep fingerprints and
+                # track buckets portable (absolute paths broke both —
+                # live test #6: 1408 CRITICALs from ignored build
+                # assets flooding the report, tracked files bucketed
+                # untracked).
+                "--source", ".",
             ]
             out = subprocess.run(
                 cmd, cwd=repo, capture_output=True, text=True, timeout=300

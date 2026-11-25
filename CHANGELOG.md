@@ -1,6 +1,31 @@
 # Changelog
 
-## 0.3.11 (2026-11-25)
+## 0.3.12 (2026-11-25)
+
+Fixed — one shared root cause, found by the ionic-vue/nestjs live test:
+
+  * **gitleaks reported ABSOLUTE file paths** (the adapter passed the
+    repo root absolute to `--source`), which broke three things at
+    once: the relative-anchored gitignore allowlist never matched —
+    so 1408 CRITICAL findings from gitignored build assets flooded a
+    live report (the 0.3.3 gitignore-awareness was silently dead in
+    every run since; the gitleaks tests are monkeypatch-fake and never
+    exercised the allowlist against the real binary) — tracked files
+    were bucketed "untracked" — and baseline fingerprints became
+    machine-dependent. `--source` is now relative (`.`), gitleaks
+    reports repo-relative paths. Regression: a real-binary nested-
+    `.gitignore` integration test (monkeypatch-fake tests cannot catch
+    flag-level path semantics).
+  * **ts-slop had the same absolute-path bug** (absolute scan-path
+    argument) — same consequences for ts-slop findings; the scan path
+    is relative now.
+  * `tests/test_gitleaks_ignores.py` contains a seeded AWS-key-shaped
+    fixture; the repo's own scan surfaced it and two more
+    secret-shaped documentation strings — all suppressed durably in
+    the repo's new `.polycheck.yml` with reasons (seeded defect, test
+    fixture, documentation example). polycheck's own repo is back to
+    0 findings at MEDIUM+.
+
 
   * **`ts-slop` gains `ts-any-annotation`** — flags `: any` type
     annotations (parameters, variables) as slop. Found in the field:
