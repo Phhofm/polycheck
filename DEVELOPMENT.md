@@ -72,7 +72,7 @@ pipx-installed.
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
 | Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 237 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
-Latest release: **0.3.7** on PyPI (JSON API verified + fresh pipx E2E);
+Latest release: **0.3.9** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
 capacity queued CI matrix runs for hours on 2026-11-23/24 — 2026-11-25
 the ~30 stale queued runs were canceled and the trigger fixed (docs-only
