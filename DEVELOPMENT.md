@@ -4,15 +4,53 @@ Single log for progress, decisions, and experiments. Task checklists live in
 `MASTERPLAN.md` (task-by-task with commit messages) and `implementation_plan.md`
 (milestones); this file records *state* and *why*, so nothing goes stale.
 
-## Current state (verified 2026-11-23)
+## Next session start here (0.3.4 — the working agreement)
+
+A fresh session reads this file top to bottom. The next work block:
+
+1. **Implement `--profile pr|deep`** per the design decision in
+   *Backlog: 0.3.4+* below (presets over existing primitives; default scan
+   stays unchanged). PR scoping = changed tracked files (git diff vs HEAD
+   or merge-base), gate HIGH; deep = heavy tools ON + structural adapters.
+   The pre-push hook switches to `--profile pr`.
+2. **First structural adapter: import-linter or tach** (Python,
+   architecture/circular imports) — seeded-defect expectation required
+   before it ships (D1: one adapter per iteration, verified).
+3. **Reviewer template**: add the "Quality Questions" section (deep
+   profile) — SRP/SOLID/LoD/names/comments-why/design patterns as
+   checklist QUESTIONS, never fabricated findings.
+4. **Cross-model audit** of the heavy adapters (sonarless/pip-audit/
+   npm-audit/semgrep) against real CLI/API payloads — their parsing rests
+   on assumed shapes; the seeded verifier skips heavy tools.
+
+Working agreement (Philip, 2026-11-25): **everything is verified in this
+repo first** — local gates green, live run on a scratch/synthetic repo,
+pipx E2E from a fresh install — *then* it gets tested in other repos.
+Release 0.3.4 afterwards (assert-anchored changelog insert, `&&`-chained
+gates before commit, tag, PyPI verification — see the 0.3.2 process-miss
+entry in Experiments).
+
+Also read before starting: the *Experiments* log (live-test history and
+the two external live tests that produced meta-findings #1–#5, all fixed
+or logged), the *Decisions* section, and the *Backlog: 0.3.4+* section.
+
+## Current state (verified 2026-11-25)
 
 Environment: Python 3.12, tooling installed to `~/.local` (pipx-style).
+`polycheck` on PATH = local source install (`pipx install --force
+/home/phhofm/Documents/GitHub/polycheck`) at 0.3.3 feature level.
+`scb-check` also pipx-installed.
 
 | Gate | Command | Result |
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
-| Types | `mypy src/polycheck` | clean — pragmatic config, 0 errors in 35 files |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 97 passed, 0 failed, 1 skipped (smoke test needs LUCID_PATH env) |
+| Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 168 passed, 0 failed, 1 skipped |
+
+Latest release: **0.3.3** on PyPI (JSON API verified + fresh pipx E2E);
+v0.3.0–v0.3.3 all released via Trusted Publishing. CI note: GitHub runner
+capacity queued test-matrix runs for hours on 2026-11-23/24 — Release
+workflows stayed green; local gates are the verification chain.
 
 Environment notes discovered this session:
 
@@ -30,11 +68,8 @@ Environment notes discovered this session:
   (`pipx inject mypy "mcp==1.27.0"`) — an unpinned inject pulled mcp 2.3.0,
   whose renamed pydantic fields (`mime_type`, `input_schema`) produced false
   API-mismatch errors against the 1.27.0 runtime.
-* `tests/test_sonarless.py::test_sonarless_install_requires_docker` is
-  env-dependent: on machines where `sonarless` is actually installed,
-  `install()` short-circuits at `is_installed()` (sonarless.py) before the
-  Docker check the test patches. Needs `is_installed` monkeypatched too —
-  implementation_plan 0.2.
+* ~~`tests/test_sonarless.py::test_sonarless_install_requires_docker` is
+  env-dependent~~ — fixed 2026-11-23 (test patches `is_installed` too).
 
 Known silently-broken analyzers: **all resolved 2026-11-23** — the seeded-defect
 verifier (implementation_plan 1.13) now guards every adapter with an
