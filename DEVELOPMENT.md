@@ -616,6 +616,15 @@ after, verdict, reason.
 
 ## Backlog: 0.3.4+ (profiles & structural adapters)
 
+**Metrics history / deltas (idea from the 0.3.9 reflection, 2026-11-25):**
+the composites are a compass, not a map — they say WHETHER code degraded,
+not WHAT to fix. To make the compass self-reading, persist the per-scan
+`metrics` snapshot in `.polycheck/` (like the baseline) and let the
+markdown report render deltas against the previous run
+("verbosity +0.3 since last scan — 2 new duplicate blocks"), so the LLM
+gets a trend plus the underlying findings as the actionable list without
+an external compare script.
+
 **Profiles — design decision (2026-11-25):** two named profiles plus the
 unchanged default, presets over existing primitives (tool selection,
 scoping, gate) — no new engines.
