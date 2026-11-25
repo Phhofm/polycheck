@@ -4,36 +4,69 @@
 [![PyPI](https://img.shields.io/pypi/v/polycheck)](https://pypi.org/project/polycheck/)
 [![Python](https://img.shields.io/pypi/pyversions/polycheck)](https://pypi.org/project/polycheck/)
 
-**Let your LLM triage a verified report instead of hallucinating a review.**
+More and more production code is written by AI coding agents — and the
+way agents write code has measurable failure modes.
 
-polycheck runs the cheap, exhaustive static-analysis pass first — 19
-bundled analyzers (linters, type-checkers, CVE scanners, secret
-scanners, SonarQube) — and hands the LLM a tight, located, reproducible
-findings list to adjudicate:
+## Why polycheck exists
+
+*"SlopCodeBench: Benchmarking How Coding Agents Degrade Over Long-Horizon
+Iterative Tasks"* (Orlanski et al., 2026 —
+[arXiv:2603.24755](https://arxiv.org/abs/2603.24755)) put numbers on what
+reviewers keep feeling:
+
+- agents degrade their own codebases across iterative extension:
+  **structural erosion rises in 77 % of trajectories, verbosity in
+  75.5 %**
+- compared against 473 open-source Python repositories, agent code is
+  **2.3× more verbose and 2.0× more eroded**
+- the trap: **agents pass the checkpoints while the code erodes and
+  bloats with every turn** — tests stay green, so the decay is
+  invisible to exactly the checks most projects rely on
+- and prompting the agent to write better code helps little: explicit
+  quality guidance reduces initial verbosity and erosion by up to a
+  third, but **does not change the degradation rate**
+
+That is the gap polycheck fills. Prompts don't stop erosion;
+deterministic, measurable checks run on every iteration can catch it.
+
+## What polycheck does
+
+polycheck applies the paper's findings — plus everything else
+deterministic analysis catches — as a polyglot static-analysis pipeline
+with LLM-ready output. It runs 19 bundled analyzers (linters,
+type-checkers, CVE scanners, secret scanners, SonarQube) and hands the
+LLM a tight, located, reproducible findings list to adjudicate:
 
 - every finding has a **tool, rule, file, and line** — the LLM verifies
   instead of guessing
+- the paper's erosion model is measured directly: duplicated AST
+  blocks, slop patterns, complexity-mass concentration ([details](#anti-ai-slop-metrics-built-in-zero-install))
 - works as an **MCP server** (two slim tools) with `/polycheck`
   workflows for Kilo Code, OpenCode, Claude Code, and any MCP client
 - **self-auditing**: a seeded-defect verifier guards every adapter — a
   tool that runs clean on a repo seeded with defects it must catch
   reports `missed-defects`, never a false bill of health
 
+**Let your LLM triage a verified report instead of hallucinating a
+review — and measure the slop your agents leave behind.**
+
 ## Contents
 
-1. [Quick start](#quick-start)
-2. [What you get](#what-you-get)
-3. [Anti AI-slop metrics](#anti-ai-slop-metrics-built-in-zero-install)
-4. [Scan profiles](#scan-profiles)
-5. [CLI usage](#cli-usage-manual)
-6. [The daily loop](#the-daily-loop)
-7. [Configuration](#configuration)
-8. [Tool matrix](#tool-matrix)
-9. [How it works](#how-it-works)
-10. [MCP server reference](#mcp-server-reference)
-11. [For LLM agents: the polycheck skill](#use-polycheck-from-an-llm-skill)
-12. [Extending](#adding-a-language-or-tool)
-13. [Origin & philosophy](#origin)
+1. [Why polycheck exists](#why-polycheck-exists)
+2. [What polycheck does](#what-polycheck-does)
+3. [Quick start](#quick-start)
+4. [What you get](#what-you-get)
+5. [Anti AI-slop metrics](#anti-ai-slop-metrics-built-in-zero-install)
+6. [Scan profiles](#scan-profiles)
+7. [CLI usage](#cli-usage-manual)
+8. [The daily loop](#the-daily-loop)
+9. [Configuration](#configuration)
+10. [Tool matrix](#tool-matrix)
+11. [How it works](#how-it-works)
+12. [MCP server reference](#mcp-server-reference)
+13. [For LLM agents: the polycheck skill](#use-polycheck-from-an-llm-skill)
+14. [Extending](#adding-a-language-or-tool)
+15. [Origin & philosophy](#origin)
 
 ---
 
