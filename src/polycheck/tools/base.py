@@ -230,6 +230,19 @@ class Tool(abc.ABC):
         """True if the underlying binary exists in PATH."""
         return shutil.which(self.binary) is not None
 
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        """Why this installed tool does not apply to ``repo``.
+
+        Shown in the run table for tools that are installed and eligible
+        but skipped (external live test, 0.3.7: a deep run silently
+        dropped tach/pip-audit/dependency-cruiser because their config
+        or dependency manifest was absent — understanding that required
+        a doctor cross-check). Return None when there is nothing
+        meaningful to say; the run table then shows the bare
+        ``not-applicable`` status.
+        """
+        return None
+
     def install_hint(self) -> str:
         """One-line shell command to install the tool. Shown to the user
         via ``polycheck list-tools`` / ``polycheck doctor`` when the

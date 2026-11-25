@@ -252,6 +252,40 @@ after, verdict, reason.
   canceled via `gh run cancel`. Verdict: KEPT. Not done: trimming the
   Python matrix to 2 versions (Philip's call — costs 3.12 signal).
 
+* **2026-11-25 — external live test #3: the vibecode-skill repo ran a
+  full reviewer loop on 0.3.0→0.3.6** (scan trajectory 590 → 34 → 12 →
+  8 → 2, all triaged; plus a deep run). Validated in the field:
+  cross-tool dedup, doctor --json driving the whole onboarding chain,
+  profile_guidance, scb-check live (found erosion in their CLI main
+  nothing else saw), the seeded verifier catching a real regression
+  (gitleaks ruleset lost to `--config` without `extend`), file-based
+  reports (their compare_runs.py reads polycheck-report.json directly),
+  baseline/suppress/hook/deep semantics. Meta-findings:
+  * **#6 — the run table hid installed-but-not-applicable tools** (a
+    deep run showed 9 tools while tach/pip-audit/dependency-cruiser
+    were installed-but-skipped; understanding why required a doctor
+    cross-check — the silent-nothing failure mode D1 bans). Fixed:
+    runners emit `not-applicable` ToolResults with the adapter's
+    reason (`not_applicable_reason`, implemented in the eight
+    manifest/config adapters), shown in the run table; scan-coverage
+    math excludes them.
+  * **#7 — semgrep inline suppression does not stick for taint rules**
+    (`dynamic-urllib-use-detected` kept firing despite
+    `# nosemgrep:` at the site — engine behavior, not a polycheck bug).
+    Disposition: documented that `suppress:` in .polycheck.yml is the
+    reliable path, and that suppressing a mitigated finding is
+    legitimate (README: persist it with a comment that documents the
+    mitigation).
+  * **#8 — feature: SlopCodeBench composites as first-class report
+    metadata.** Verified feasible: `scb-check check --report` emits
+    `verbosity`/`erosion`/`cog_erosion` directly. Backlogged as its own
+    block (adapter gains a JSON mode; report.json gains a `metrics`
+    section; trendable across runs — "did the codebase stay stable
+    under the skill?"). Also adopted: doctor --json now embeds a
+    `skill` block (pointer to polycheck://setup + the raw
+    polycheck-skill.md URL) so an agent reaches the full guide in one
+    hop without any host-specific skill installed. Verdict: KEPT.
+
 * **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
   insight: polycheck is driven by LLMs, but the operational knowledge
   (sonarless needs Docker, the SonarQube server runs in a container the

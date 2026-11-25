@@ -32,6 +32,8 @@ class TscTool(Tool):
 
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "tsconfig.json").exists()
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return "no tsconfig.json"
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("tsc") is None and shutil.which("npx") is None:

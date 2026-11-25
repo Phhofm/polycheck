@@ -35,6 +35,9 @@ class PipAuditTool(Tool):
             (repo / name).exists()
             for name in ("pyproject.toml", _REQUIREMENTS_TXT, "Pipfile", "poetry.lock", "uv.lock")
         )
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return ("no dependency manifest (pyproject.toml, requirements.txt, "
+                "Pipfile, poetry.lock, uv.lock)")
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("pip-audit") is None:

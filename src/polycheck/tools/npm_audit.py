@@ -33,6 +33,8 @@ class NpmAuditTool(Tool):
 
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "package.json").exists()
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return "no package.json"
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("npm") is None:

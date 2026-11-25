@@ -139,6 +139,18 @@ def readiness(registry) -> dict:
             "installed": installed,
             "missing": len(tools) - installed,
         },
+        "skill": {
+            "resource": "polycheck://setup",
+            "url": (
+                "https://raw.githubusercontent.com/Phhofm/polycheck/"
+                "main/polycheck-skill.md"
+            ),
+            "install_hint": (
+                "mkdir -p ~/.kilo/skills/polycheck && curl -fsSL "
+                "https://raw.githubusercontent.com/Phhofm/polycheck/main/"
+                "polycheck-skill.md -o ~/.kilo/skills/polycheck/SKILL.md"
+            ),
+        },
     }
 
 

@@ -38,10 +38,11 @@ class ToolResult:
     tools reported zero findings."""
 
     tool: str
-    status: str               # "ok" | "no-findings" | "skipped" | "error" | "timeout"
+    status: str               # "ok" | "no-findings" | "not-applicable" | "error" | "timeout"
     findings: list[Finding] = field(default_factory=list)
     duration_sec: float = 0.0
     error: str | None = None
+    message: str = ""         # e.g. why a tool was not applicable
 
 
 class Runner:
@@ -75,12 +76,23 @@ class Runner:
         tool). Tool subprocesses are independent; running in parallel is
         safe and roughly halves total wall time on a 4+ core machine.
         """
-        applicable = self._applicable_tools(profile)
+        applicable, not_applicable = self._eligibility_split(profile)
         if tools is not None:
             wanted = set(tools)
             applicable = [c for c in applicable if c.name in wanted]
+            not_applicable = [row for row in not_applicable if row[0].name in wanted]
 
-        results: list[ToolResult] = []
+        # Not-applicable rows come first so the report answers "why did
+        # tool X not run?" without a doctor cross-check (external live
+        # test, 0.3.7).
+        results: list[ToolResult] = [
+            ToolResult(
+                tool=cls.name,
+                status="not-applicable",
+                message=reason,
+            )
+            for cls, reason in not_applicable
+        ]
         if parallel:
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
                 futures = {pool.submit(self._run_one, c): c for c in applicable}
@@ -98,6 +110,14 @@ class Runner:
 
     def _applicable_tools(self, profile: ProfileSpec | None = None) -> list[type[Tool]]:
         """Filter registry → language-applicable → user enable/disable → profile → installed."""
+        return self._eligibility_split(profile)[0]
+
+    def _eligibility_split(
+        self, profile: ProfileSpec | None = None
+    ) -> tuple[list[type[Tool]], list[tuple[type[Tool], str]]]:
+        """Split installed, enabled candidates into applicable tools and
+        installed-but-not-applicable tools (with the adapter's reason,
+        when it can state one)."""
         langs = detect(self.repo)
         lang_slugs = {lang.slug for lang in langs}
 
@@ -113,18 +133,20 @@ class Runner:
         # Apply enable/disable filters.
         candidates = self._apply_filters(candidates)
 
-        # Filter to installed + applicable + profile-eligible.
-        out: list[type] = []
+        applicable: list[type[Tool]] = []
+        not_applicable: list[tuple[type[Tool], str]] = []
         for cls in candidates:
             if is_skipped(cls, profile):
                 continue
             inst = cls(config=self.config)
             if not inst.is_installed():
                 continue
-            if not inst.is_applicable(self.repo):
-                continue
-            out.append(cls)
-        return out
+            if inst.is_applicable(self.repo):
+                applicable.append(cls)
+            else:
+                reason = inst.not_applicable_reason(self.repo) or ""
+                not_applicable.append((cls, reason))
+        return applicable, not_applicable
 
     def _apply_filters(self, candidates: list[type[Tool]]) -> list[type[Tool]]:
         """Apply enable/disable config filters to candidate tools."""

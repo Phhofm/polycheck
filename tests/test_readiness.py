@@ -191,3 +191,17 @@ def test_doctor_json_fail_on_missing_exits_nonzero(monkeypatch):
     result = CliRunner().invoke(app, ["doctor", "--json", "--fail-on-missing"])
 
     assert result.exit_code == 1
+
+
+def test_doctor_json_embeds_skill_block(monkeypatch):
+    """External live test: an agent drove polycheck purely via
+    doctor --json + polycheck://setup. The readiness payload now points
+    straight at the full skill so every host reaches it in one hop."""
+    from polycheck import readiness
+
+    payload = readiness.readiness(_registry())
+
+    skill = payload["skill"]
+    assert skill["resource"] == "polycheck://setup"
+    assert skill["url"].endswith("polycheck-skill.md")
+    assert "SKILL.md" in skill["install_hint"]

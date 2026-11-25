@@ -313,6 +313,12 @@ suppress:
 Suppressed findings are dropped before reports are written and before
 the CI exit-code gate, so they never reappear in a later run.
 
+A **mitigated** finding is a legitimate `suppress:` candidate too —
+e.g. a taint flow that fires despite the schema allowlist guarding it:
+the tool cannot see the mitigation, you can. Persist the verdict with a
+comment explaining it, so the suppression documents the mitigation
+instead of silently hiding a bug.
+
 ### The dev-cycle trigger: pre-push gate
 
 Wire polycheck into the development loop so quality is checked before it

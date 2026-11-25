@@ -70,6 +70,8 @@ class DependencyCruiserTool(Tool):
 
     def is_applicable(self, repo: Path) -> bool:
         return any((repo / name).exists() for name in _CONFIG_NAMES)
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return "no dependency-cruiser config (.dependency-cruiser.*)"
 
     def _command(self) -> list[str]:
         if shutil.which(self.binary):

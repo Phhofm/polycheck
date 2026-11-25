@@ -40,6 +40,10 @@ class EslintTool(Tool):
                 pass
         return bool(flat or old or has_dep)
 
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return ("no eslint config (eslint.config.*, .eslintrc*, or "
+                "eslint in package.json)")
+
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("eslint") is None and shutil.which("npx") is None:
             return []

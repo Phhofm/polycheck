@@ -761,7 +761,9 @@ def _install_missing_tools(missing_tools: list[dict]) -> list[dict]:
 
 
 def _scan_coverage(results: list, missing_tools: list[dict], missing_system: list[dict]) -> dict:
-    tools_run = [r.tool for r in results]
+    # not-applicable rows are visibility, not coverage — they must not
+    # inflate the "N of M applicable analyzers ran" math.
+    tools_run = [r.tool for r in results if r.status != "not-applicable"]
     applicable_tools = len(tools_run) + len(missing_tools)
     coverage = "full" if not missing_tools and not missing_system else "partial"
     warnings = []

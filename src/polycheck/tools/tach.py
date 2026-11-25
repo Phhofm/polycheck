@@ -38,6 +38,8 @@ class TachTool(Tool):
         return pyproject.exists() and "[tool.tach]" in pyproject.read_text(
             encoding="utf-8", errors="replace"
         )
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return "no tach.toml (and no [tool.tach] in pyproject.toml)"
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("tach") is None:

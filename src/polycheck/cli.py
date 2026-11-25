@@ -312,9 +312,11 @@ def _print_summary(results: list, findings: list, written: list[Path]) -> None:
     by_tool.add_column("Status")
     by_tool.add_column("Findings", justify="right")
     by_tool.add_column("Time (s)", justify="right")
+    by_tool.add_column("Message")
     for r in sorted(results, key=lambda r: r.tool):
         by_tool.add_row(
-            r.tool, r.status, str(len(r.findings)), f"{r.duration_sec:.1f}"
+            r.tool, r.status, str(len(r.findings)), f"{r.duration_sec:.1f}",
+            r.message,
         )
     console.print(by_tool)
     console.print(f"\n[bold]{len(findings)}[/bold] findings after filtering")
