@@ -110,21 +110,6 @@ def test_changed_files_covers_uncommitted_and_upstream_ahead(tmp_path: Path):
     assert "other.py" not in changed
 
 
-def test_changed_files_without_upstream_uses_working_tree(tmp_path: Path):
-    from polycheck.profiles import changed_files
-
-    _git(tmp_path, "init", "-q")
-    (tmp_path / "a.py").write_text("x = 1\n")
-    _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-qm", "base")
-    (tmp_path / "b.py").write_text("y = 2\n")
-    _git(tmp_path, "add", "b.py")
-
-    changed = changed_files(tmp_path)
-
-    assert changed == {"b.py"}
-
-
 def test_changed_files_fresh_repo_without_commits_lists_index(tmp_path: Path):
     from polycheck.profiles import changed_files
 
@@ -171,3 +156,22 @@ def test_filter_by_scope_none_is_identity():
 
     findings = [_f("R1", "a.py")]
     assert filter_by_scope(findings, None) == findings
+
+
+def test_changed_files_without_upstream_gates_everything_pushable(tmp_path: Path):
+    """First push to a fresh remote: no upstream exists, so the merge-base
+    logic cannot scope. Everything tracked (committed + staged) can be
+    carried by that push — the gate must see it, or the very first push
+    bypasses the HIGH gate entirely (0.3.5)."""
+    from polycheck.profiles import changed_files
+
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "base")
+    (tmp_path / "b.py").write_text("y = 2\n")
+    _git(tmp_path, "add", "b.py")
+
+    changed = changed_files(tmp_path)
+
+    assert changed == {"a.py", "b.py"}

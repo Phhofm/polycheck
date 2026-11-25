@@ -140,15 +140,22 @@ def changed_files(repo: Path) -> set[str] | None:
     upstream = _git_lines(
         repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]
     )
-    if upstream:
-        upstream_name = sorted(upstream)[0]
-        merge_base = _git_lines(repo, ["merge-base", "HEAD", upstream_name])
-        if merge_base:
-            ahead = _git_lines(
-                repo, ["diff", "--name-only", f"{sorted(merge_base)[0]}..HEAD"]
-            )
-            if ahead is not None:
-                files |= {line for line in ahead if line}
+    if not upstream:
+        # No upstream: nothing has been pushed yet, so the next push can
+        # carry every tracked file. Scope to all of them — an empty scope
+        # here would let the very first push bypass the gate entirely.
+        tracked = _git_lines(repo, ["ls-files"]) or set()
+        files |= {line for line in tracked if line}
+        return files
+
+    upstream_name = sorted(upstream)[0]
+    merge_base = _git_lines(repo, ["merge-base", "HEAD", upstream_name])
+    if merge_base:
+        ahead = _git_lines(
+            repo, ["diff", "--name-only", f"{sorted(merge_base)[0]}..HEAD"]
+        )
+        if ahead is not None:
+            files |= {line for line in ahead if line}
     return files
 
 

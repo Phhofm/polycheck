@@ -544,6 +544,26 @@ def test_handle_polycheck_pr_profile_scopes_to_changed_files(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
         cwd=tmp_path, check=True,
     )
+    # In-sync upstream: history is pushed, new work is staged — the
+    # realistic PR scenario (otherwise everything tracked is in scope).
+    remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    subprocess.run(["git", "push", "-q", str(remote), "HEAD"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "remote.origin.url", str(remote)], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+        cwd=tmp_path, check=True,
+    )
+    head = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "config", f"branch.{head}.remote", "origin"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", f"branch.{head}.merge", f"refs/heads/{head}"],
+        cwd=tmp_path, check=True,
+    )
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=tmp_path, check=True)
     (tmp_path / "b.py").write_text("y = 2\n")
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "b.py"],

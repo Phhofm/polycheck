@@ -51,6 +51,8 @@ def _register(monkeypatch, cls: type[Tool]) -> None:
 
 
 def _git_repo(tmp_path: Path) -> None:
+    """A repo whose upstream is IN SYNC with the base commit — the
+    realistic PR/push scenario: new work is staged, history is pushed."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     (tmp_path / "a.py").write_text("x = 1\n")
     subprocess.run(
@@ -61,11 +63,59 @@ def _git_repo(tmp_path: Path) -> None:
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
         cwd=tmp_path, check=True,
     )
+    remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    subprocess.run(["git", "push", "-q", str(remote), "HEAD"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "remote.origin.url", str(remote)], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+        cwd=tmp_path, check=True,
+    )
+    head = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "config", f"branch.{head}.remote", "origin"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", f"branch.{head}.merge", f"refs/heads/{head}"],
+        cwd=tmp_path, check=True,
+    )
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=tmp_path, check=True)
     (tmp_path / "b.py").write_text("y = 2\n")
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "b.py"],
         cwd=tmp_path, check=True,
     )
+
+
+def test_profile_pr_without_upstream_gates_committed_high(tmp_path: Path, monkeypatch):
+    """First push to a fresh remote: no upstream, nothing pushed yet —
+    a committed HIGH finding must still block the gate (0.3.5)."""
+    _register(monkeypatch, _ScopedStub)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "a.py"],
+        cwd=tmp_path, check=True,
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
+        cwd=tmp_path, check=True,
+    )
+
+    class _High(_ScopedStub):
+        def run(self, repo):
+            return [_finding("HIGH-BUG", "a.py", Severity.HIGH)]
+
+    reg = ToolRegistry()
+    reg.register(_High)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
+    result = CliRunner().invoke(
+        _app(), ["run", str(tmp_path), "--profile", "pr"]
+    )
+
+    assert result.exit_code == 1, result.output
 
 
 def test_profile_pr_scopes_findings_to_changed_files(tmp_path: Path, monkeypatch):
