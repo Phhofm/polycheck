@@ -70,7 +70,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 235 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 237 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.7** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
@@ -309,6 +309,27 @@ after, verdict, reason.
     states "no pyproject.toml".
   Verdict: KEPT. The loop partner confirmed 0.3.7
   release-worthy and consumes the scb-composites block next.
+
+* **2026-11-25 — external live test #5 (Loop 3, 0.3.8, deep profile) +
+  CI matrix decision.** Loop 3 validated the composites block in the
+  field with a controlled A/B: a clean 5-LOC module scored
+  0.0/0.0/0.0, an intentionally eroded twin (duplicated if/elif
+  ladder + `range(len())` + pass-through wrapper) scored verbosity
+  1.0 and cog_erosion 1.0 with 9 findings vs 1 — the metrics react
+  dramatically and correctly. Their compare_runs.py now trends the
+  metrics (delta lines per run). Two takeaways adopted:
+  * **Composite semantics documented** (README): `erosion` measures
+    cyclomatic-mass *concentration* — a ladder spreading mass across
+    branches reads 0.0 there while verbosity/cog_erosion spike; the
+    three composites belong in a dashboard together, none alone
+    catches every degradation form.
+  * **macOS removed from the CI matrix** (Philip's call): hosted
+    macOS pools starved for days — macos jobs waited hours for a
+    runner while ubuntu/windows picked one up in seconds, leaving
+    runs stuck "in progress" (and forcing Philip to cancel the 0.3.8
+    CI run manually). Windows verified green via the cmd.exe spawn
+    fix; macOS coverage is suspended until capacity is dependable.
+  Verdict: KEPT. Next loop: zizmor.
 
 * **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
   insight: polycheck is driven by LLMs, but the operational knowledge

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.9 (2026-11-25)
+
+  * **Fixed: the npm-family npx/npm fallbacks crashed on Windows**
+    (`WinError 2` — npm's `.cmd` shims cannot be spawned directly).
+    knip, depcheck, eslint, tsc, dependency-cruiser, and npm-audit now
+    route through `cmd /c` on Windows; caught by the cross-platform
+    smoke test, verified green on windows-latest (all three Python
+    versions).
+  * **CI: macOS removed from the test matrix.** The hosted macOS pools
+    starved for days — macos jobs waited hours for a runner while
+    ubuntu/windows picked one up in seconds, keeping runs stuck
+    "in progress". macOS coverage is suspended until capacity is
+    dependable (ubuntu-latest + windows-latest × 3.10/3.12/3.13 remain).
+
 ## 0.3.8 (2026-11-25)
 
 The SlopCodeBench composites become first-class scan metrics:

@@ -222,7 +222,13 @@ JS/TS) in the deep profile.
 SlopCodeBench composites (verbosity, erosion, cog_erosion) under a
 top-level `metrics` key on every scan that runs scb-check — diff them
 across runs to see whether an agent-assisted codebase is staying
-stable or eroding turn over turn.
+stable or eroding turn over turn. Read them **together**: verbosity
+measures redundant code, cog_erosion the cognitive mass piling up in
+few functions, and `erosion` the cyclomatic-mass *concentration* — a
+ sprawling if/elif ladder spreads mass across branches and can read
+0.0 on erosion while verbosity and cog_erosion spike. No single
+composite catches every degradation form; a clean bill from one is
+not a clean bill from the analysis.
 
 ---
 
