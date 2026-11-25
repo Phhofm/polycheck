@@ -4,26 +4,43 @@
 [![PyPI](https://img.shields.io/pypi/v/polycheck)](https://pypi.org/project/polycheck/)
 [![Python](https://img.shields.io/pypi/pyversions/polycheck)](https://pypi.org/project/polycheck/)
 
-> **Let your LLM triage a verified report instead of hallucinating a review.**
-> polycheck runs the cheap, exhaustive static-analysis pass first
-> (linters, type-checkers, CVE scanners, secret scanners, SonarQube)
-> and hands the LLM a tight, located, reproducible findings list to
-> adjudicate. The LLM verifies instead of guessing — every finding has
-> a tool, a rule, a file, and a line.
+**Let your LLM triage a verified report instead of hallucinating a review.**
 
-> **Self-audit, enforced:** every bundled adapter is guarded by a
-> seeded-defect verifier (`polycheck verify-tools`) — a tool that runs
-> clean on a repo seeded with defects it must catch reports
-> `missed-defects`, never a false "clean bill of health". `polycheck
-> run .` on this repo's own source returns **0 findings at MEDIUM+
-> severity**, and CI re-checks that on every push.
+polycheck runs the cheap, exhaustive static-analysis pass first — 19
+bundled analyzers (linters, type-checkers, CVE scanners, secret
+scanners, SonarQube) — and hands the LLM a tight, located, reproducible
+findings list to adjudicate:
+
+- every finding has a **tool, rule, file, and line** — the LLM verifies
+  instead of guessing
+- works as an **MCP server** (two slim tools) with `/polycheck`
+  workflows for Kilo Code, OpenCode, Claude Code, and any MCP client
+- **self-auditing**: a seeded-defect verifier guards every adapter — a
+  tool that runs clean on a repo seeded with defects it must catch
+  reports `missed-defects`, never a false bill of health
+
+## Contents
+
+1. [Quick start](#quick-start)
+2. [What you get](#what-you-get)
+3. [Anti AI-slop metrics](#anti-ai-slop-metrics-built-in-zero-install)
+4. [Scan profiles](#scan-profiles)
+5. [CLI usage](#cli-usage-manual)
+6. [The daily loop](#the-daily-loop)
+7. [Configuration](#configuration)
+8. [Tool matrix](#tool-matrix)
+9. [How it works](#how-it-works)
+10. [MCP server reference](#mcp-server-reference)
+11. [For LLM agents: the polycheck skill](#use-polycheck-from-an-llm-skill)
+12. [Extending](#adding-a-language-or-tool)
+13. [Origin & philosophy](#origin)
 
 ---
 
-## Quick Start: Use `/polycheck` in Kilo Code, OpenCode, Claude Code, and other MCP tools
+## Quick Start
 
-polycheck is designed for LLM coding assistants. Install it once, initialize
-your assistant integration, then run `/polycheck` in any repository.
+Install once, initialize your assistant integration, then run
+`/polycheck` in any repository.
 
 ### Step 1: Install polycheck
 
@@ -116,297 +133,15 @@ and then asks the LLM to triage the generated markdown and JSON reports.
 Session summaries are written under `.polycheck/` so future LLM sessions
 can reference what was checked, skipped, fixed, or deferred.
 
-### Manual MCP setup
-
-If you prefer not to use `polycheck init`, configure the MCP server manually.
-
-**Claude Code** — add to project `.mcp.json`, `~/.claude/settings.json`, or
-your Claude user MCP config:
-
-```json
-{
-  "mcpServers": {
-    "polycheck": {
-      "command": "polycheck",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Kilo Code (VSCode Extension)** — add to `kilo.jsonc` in your project root
-or `~/.config/kilo/kilo.jsonc`:
-
-```json
-{
-  "mcp": {
-    "polycheck": {
-      "type": "local",
-      "command": ["polycheck", "mcp"],
-      "enabled": true
-    }
-  }
-}
-```
-
-**OpenCode** — add to `opencode.jsonc` in your project root or
-`~/.config/opencode/opencode.jsonc`:
-
-```json
-{
-  "mcp": {
-    "polycheck": {
-      "type": "local",
-      "command": ["polycheck", "mcp"],
-      "enabled": true
-    }
-  }
-}
-```
-
-**Any MCP-compatible tool** (generic JSON):
-
-```json
-{
-  "mcpServers": {
-    "polycheck": {
-      "command": "polycheck",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Docker / SonarQube:** SonarQube analysis through sonarless requires
-both Docker running and the `sonarless` binary installed. polycheck keeps
-sonarless enabled by default when those are available. If Docker is
-missing, polycheck reports it as a skipped system dependency and suggests
-asking your LLM coding assistant for OS-specific Docker setup help. If
-Docker is available but sonarless is missing, the guided MCP workflow
-offers to install sonarless before rerunning `polycheck.run`.
-
----
-
-## CLI Usage (Manual)
-
-If you prefer running polycheck directly without an LLM:
-
-```bash
-polycheck run [PATH]                      # run all applicable tools
-polycheck run . --tool ruff --tool mypy    # restrict to specific tools
-polycheck run . --severity MEDIUM          # drop INFO / LOW findings
-polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
-polycheck run . --install                  # install missing tools, then run
-polycheck run . --parallel                 # run tools concurrently
-polycheck run . --profile pr               # fast tools, changed-file scope, HIGH gate
-polycheck run . --profile deep             # every tool incl. heavy ones, no gate
-polycheck run . --output markdown          # markdown only (no JSON / sarif)
-polycheck baseline .                       # snapshot current findings
-polycheck run . --diff                     # only findings NEW since the baseline
-polycheck init --host all --scope global   # initialize /polycheck workflows
-polycheck init --dry-run --host all        # preview initialization
-polycheck init --host all --agents-only    # write only the reviewer subagent
-polycheck init --scope project --git-hook pre-push   # dev-cycle quality gate
-polycheck doctor                           # show installed/missing tools, exit 0 by default
-polycheck doctor --json                    # machine-readable readiness: tools, prerequisites, profiles, install policy
-polycheck doctor --fail-on-missing         # exit 1 when tools are missing
-polycheck install                          # install every missing tool
-polycheck install ruff mypy                # install specific tools
-polycheck list-tools                       # list every available analyzer
-polycheck verify-tools                     # verify supported analyzers on synthetic repos
-polycheck verify-tools --install --yes     # install missing auto-installable tools, then verify
-polycheck verify-tools --include-heavy     # include Docker/network-heavy tools
-polycheck prompt --plain                   # print the triage prompt
-polycheck mcp                              # start the MCP server
-```
-
-`polycheck run` exits with code **1** if any finding is at or above
-`--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` in CI.
-
-### Scan profiles
-
-Profiles are presets over the existing primitives — tool selection,
-scoping, and the gate. The default scan stays what it was:
-
-| Profile | Tools | Scope | Gate |
-|---------|-------|-------|------|
-| *(default)* | all installed + applicable, fast pass | whole repo | MEDIUM |
-| `--profile pr` | fast tools only (no Docker/network-heavy, no structural) | changed tracked files (git diff vs HEAD / merge-base) | HIGH |
-| `--profile deep` | everything, incl. sonarless/semgrep/pip-audit/npm-audit and structural adapters | whole repo | none — the report feeds triage, then `polycheck baseline` |
-
-`pr` is for pre-push/PR gates: findings in files that did not change are
-out of scope, and a baseline (`--diff`) can further filter known ones.
-`deep` is for onboarding and periodic full passes. The pre-push hook
-installed by `polycheck init --git-hook pre-push` runs `--profile pr`.
-
-### Verifying every supported analyzer
-
-Use `polycheck verify-tools` when changing analyzer wrappers or installer
-logic. It creates synthetic repositories and verifies every registered tool:
-
-```bash
-polycheck verify-tools
-```
-
-Installed tools are run. Missing tools are reported as skipped. To attempt
-automatic installation for installable tools first:
-
-```bash
-polycheck verify-tools --install --yes
-```
-
-Docker/network-heavy tools are skipped by default because they can start
-Docker or reach package registries. Include them explicitly when that is
-acceptable:
-
-```bash
-polycheck verify-tools --include-heavy
-```
-
-For a full install-and-run verification of every supported analyzer, use:
-
-```bash
-polycheck verify-tools --install --yes --include-heavy
-```
-
-The heavy set currently includes `sonarless`, `semgrep`, `pip-audit`, and
-`npm-audit`:
-
-- `sonarless` requires Docker and the `sonarless` binary. Its installer is
-  Docker-aware and only runs when Docker is available.
-- `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are not downloaded
-  by polycheck (no unverified binaries); install them via your package
-  manager (`brew`, `apt`, `scoop`, …) or their GitHub releases — the exact
-  hint is shown by `polycheck doctor` / `verify-tools`.
-- `semgrep` may download rules when using `--config=auto`.
-- `pip-audit` queries PyPI to audit Python dependencies.
-- `npm-audit` queries the npm registry to audit Node dependencies.
-
-To verify every supported tool in the pytest suite, run the heavy marker:
-
-```bash
-pytest -m heavy
-```
-
-The default `pytest` run includes the heavy smoke test only when the tools are
-already installed or can be skipped safely; use `polycheck verify-tools
---install --yes --include-heavy` when you explicitly want install-and-run
-coverage for every supported analyzer.
-
-### The reviewer subagent (keeps the main chat clean)
-
-`polycheck init` also writes a **`polycheck-reviewer` subagent** for each
-host (Kilo: `.kilo/agent/`, OpenCode: `.opencode/agent/`, Claude:
-`.claude/agents/`). The review flow then looks like this:
-
-1. You (or the LLM, or a pre-push trigger) ask for a code review.
-2. The main LLM **delegates to the `polycheck-reviewer` subagent** — your
-   main chat stays clean, no report noise.
-3. The subagent runs polycheck, triages every finding
-   (REAL BUG / REAL SMELL / FALSE POSITIVE / DEFERRED), and writes a
-   **ranked, actionable checklist** to
-   `polycheck-reports/polycheck-review-checklist.md` — each item with
-   severity, `tool:rule`, exact location, a concrete suggested action, and
-   an effort estimate. FALSE-POSITIVE verdicts land durably in
-   `.polycheck.yml` `suppress:`.
-4. The subagent returns only a compact summary (counts + top actions).
-5. The main LLM walks the checklist with you: tackle everything, or only
-   HIGH+, and re-judges any item before acting on it.
-
-Skip the agents with `--no-agents`, or write only them with `--agents-only`:
-
-```bash
-polycheck init --host all --scope project --agents-only
-```
-
-### The dev-cycle trigger: pre-push gate
-
-Wire polycheck into the development loop so quality is checked before it
-leaves your machine:
-
-```bash
-polycheck init --scope project --git-hook pre-push
-```
-
-This installs a `.git/hooks/pre-push` gate that runs
-`polycheck run . --parallel --profile pr` and blocks the push on HIGH+
-findings in the changed tracked files (it never overwrites an existing
-hook). Triage or suppress, then push. Pair it with `polycheck baseline`
-+ `run --diff` so the gate only judges what changed.
-
-### The Triage Prompt
-
-The guided MCP workflow handles triage automatically. If you run the CLI
-manually, you can still print the prompt and pair it with a report:
-
-```bash
-polycheck prompt --plain    # prints just the prompt
-```
-
-The LLM reads the report (not the source code) and triages each finding
-as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
-
----
-
-## MCP Server Reference
-
-polycheck ships an MCP server with a deliberately slim surface: **two
-tools**. Fewer tools means the LLM reliably picks the right one —
-diagnostics, listings, explanations, and installs belong to the CLI.
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. Emits spec-standard MCP progress notifications when the client requests them. |
-| `polycheck.audit_run` | Low-level scan primitive: report paths, dependency context, and a one-line summary. |
-
-### Resources
-
-| Resource | Description |
-|----------|-------------|
-| `polycheck://session/latest` | Latest `polycheck.run` workflow summary. |
-| `polycheck://triage/prompt` | The interactive LLM triage prompt. |
-| `polycheck://setup` | Setup and operations guide for LLM agents: profiles, prerequisites (Docker for sonarless), install policy, the daily loop. |
-| `polycheck://findings/markdown` | Last run's markdown report. |
-| `polycheck://findings/json` | Last run's JSON report. |
-
-CLI equivalents of the retired MCP tools: `polycheck doctor`,
-`polycheck install`, `polycheck list-tools`, `polycheck explain`.
-
-**Driving polycheck with an LLM?** Point the agent at
-`polycheck://setup` and `polycheck doctor --json` first: the resource
-explains when to use which profile, that sonarless runs the SonarQube
-engine in a Docker container the sonarless CLI manages (manual install
-by design, Docker never auto-installed), and what polycheck will and
-will not install itself. The scan responses carry the same
-`profile_guidance` block, so the agent learns the modes even without
-reading the resource.
-
-### Code Mode friendly
-
-polycheck follows the [Code Mode](https://blog.cloudflare.com/code-mode/)
-guidance (Cloudflare, Anthropic *programmatic tool calling*, OpenCode 2.0
-default): tool definitions stay tiny (two tools, not ten), tool responses
-are compact summaries, and the heavy data lives in report **files** the
-agent reads selectively — only the final result ever needs to reach the
-model. For orchestration and ad-hoc composition, the CLI is the scripting
-layer (`polycheck run . --diff --fail-on HIGH | …`), which is the same
-pattern as Cloudflare's command-line approach. An execute-code MCP tool
-would duplicate the CLI, so there isn't one. polycheck also composes fine
-with agents that route MCP calls through a code-mode interpreter by default
-(OpenCode 2.x): responses are already compact, and the install-approval
-flow is result-based (`needs_user_input`), not mid-call.
-
 ---
 
 ## What You Get
 
 `polycheck run <repo>` writes a `<repo>/polycheck-reports/` directory:
 
-  * `polycheck-report.md` — human-friendly, LLM-friendly triage report
-  * `polycheck-report.json` — canonical machine-readable findings
-  * `polycheck-report.sarif` — IDE / GitHub code-scanning integration
+- `polycheck-report.md` — human-friendly, LLM-friendly triage report
+- `polycheck-report.json` — canonical machine-readable findings
+- `polycheck-report.sarif` — IDE / GitHub code-scanning integration
 
 Each finding has a stable schema:
 
@@ -452,6 +187,154 @@ JS/TS) in the deep profile.
 
 ---
 
+## Scan profiles
+
+Profiles are presets over the existing primitives — tool selection,
+scoping, and the gate. The default scan stays what it was:
+
+| Profile | Tools | Scope | Gate |
+|---------|-------|-------|------|
+| *(default)* | all installed + applicable, fast pass | whole repo | MEDIUM |
+| `--profile pr` | fast tools only (no Docker/network-heavy, no structural) | changed tracked files (git diff vs HEAD / merge-base) | HIGH |
+| `--profile deep` | everything, incl. sonarless/semgrep/pip-audit/npm-audit and structural adapters | whole repo | none — the report feeds triage, then `polycheck baseline` |
+
+`pr` is for pre-push/PR gates: findings in files that did not change are
+out of scope, and a baseline (`--diff`) can further filter known ones.
+`deep` is for onboarding and periodic full passes. The pre-push hook
+installed by `polycheck init --git-hook pre-push` runs `--profile pr`.
+
+Before the **first deep run**, check readiness with
+`polycheck doctor --json` — it reports which analyzers are missing and
+that sonarless (SonarQube) needs Docker plus a manual sonarless install
+(see [How it works](#how-it-works)).
+
+---
+
+## CLI Usage (Manual)
+
+If you prefer running polycheck directly without an LLM:
+
+```bash
+polycheck run [PATH]                      # run all applicable tools
+polycheck run . --tool ruff --tool mypy    # restrict to specific tools
+polycheck run . --severity MEDIUM          # drop INFO / LOW findings
+polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
+polycheck run . --install                  # install missing tools, then run
+polycheck run . --parallel                 # run tools concurrently
+polycheck run . --profile pr               # fast tools, changed-file scope, HIGH gate
+polycheck run . --profile deep             # every tool incl. heavy ones, no gate
+polycheck run . --output markdown          # markdown only (no JSON / sarif)
+polycheck baseline .                       # snapshot current findings
+polycheck run . --diff                     # only findings NEW since the baseline
+polycheck init --host all --scope global   # initialize /polycheck workflows
+polycheck init --dry-run --host all        # preview initialization
+polycheck init --host all --agents-only    # write only the reviewer subagent
+polycheck init --scope project --git-hook pre-push   # dev-cycle quality gate
+polycheck doctor                           # show installed/missing tools, exit 0 by default
+polycheck doctor --json                    # machine-readable readiness: tools, prerequisites, profiles, install policy
+polycheck doctor --fail-on-missing         # exit 1 when tools are missing
+polycheck install                          # install every missing tool
+polycheck install ruff mypy                # install specific tools
+polycheck list-tools                       # list every available analyzer
+polycheck verify-tools                     # verify supported analyzers on synthetic repos
+polycheck verify-tools --install --yes     # install missing auto-installable tools, then verify
+polycheck verify-tools --include-heavy     # include Docker/network-heavy tools
+polycheck prompt --plain                   # print the triage prompt
+polycheck mcp                              # start the MCP server
+```
+
+`polycheck run` exits with code **1** if any finding is at or above
+`--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` in CI.
+
+---
+
+## The daily loop
+
+Run, triage, snapshot, gate — this is the cycle that keeps a repo clean
+without drowning in known findings.
+
+### Baseline & durable suppressions
+
+The daily loop: run once, triage, snapshot — then only *new* code
+produces findings.
+
+```bash
+polycheck baseline .        # snapshot today's accepted findings
+polycheck run . --diff      # report only NEW findings (exit 1 gates on new ones)
+```
+
+The baseline stores fingerprints only (tool, rule, file, line,
+column) in `polycheck-reports/polycheck-baseline.json` — small, stable
+across message changes. Re-run `polycheck baseline` after fixing or
+triaging to move the needle forward.
+
+When the LLM (or you) classifies a finding as FALSE POSITIVE, persist
+that verdict so it is never re-argued:
+
+```yaml
+suppress:
+  - F401                    # suppress rule everywhere
+  - SC2086@scripts/legacy.sh  # suppress rule in one file only
+```
+
+Suppressed findings are dropped before reports are written and before
+the CI exit-code gate, so they never reappear in a later run.
+
+### The dev-cycle trigger: pre-push gate
+
+Wire polycheck into the development loop so quality is checked before it
+leaves your machine:
+
+```bash
+polycheck init --scope project --git-hook pre-push
+```
+
+This installs a `.git/hooks/pre-push` gate that runs
+`polycheck run . --parallel --profile pr` and blocks the push on HIGH+
+findings in the changed tracked files (it never overwrites an existing
+hook). Triage or suppress, then push. Pair it with `polycheck baseline`
++ `run --diff` so the gate only judges what changed.
+
+### The reviewer subagent (keeps the main chat clean)
+
+`polycheck init` also writes a **`polycheck-reviewer` subagent** for each
+host (Kilo: `.kilo/agent/`, OpenCode: `.opencode/agent/`, Claude:
+`.claude/agents/`). The review flow then looks like this:
+
+1. You (or the LLM, or a pre-push trigger) ask for a code review.
+2. The main LLM **delegates to the `polycheck-reviewer` subagent** — your
+   main chat stays clean, no report noise.
+3. The subagent runs polycheck, triages every finding
+   (REAL BUG / REAL SMELL / FALSE POSITIVE / DEFERRED), and writes a
+   **ranked, actionable checklist** to
+   `polycheck-reports/polycheck-review-checklist.md` — each item with
+   severity, `tool:rule`, exact location, a concrete suggested action, and
+   an effort estimate. FALSE-POSITIVE verdicts land durably in
+   `.polycheck.yml` `suppress:`.
+4. The subagent returns only a compact summary (counts + top actions).
+5. The main LLM walks the checklist with you: tackle everything, or only
+   HIGH+, and re-judges any item before acting on it.
+
+Skip the agents with `--no-agents`, or write only them with `--agents-only`:
+
+```bash
+polycheck init --host all --scope project --agents-only
+```
+
+### The Triage Prompt
+
+The guided MCP workflow handles triage automatically. If you run the CLI
+manually, you can still print the prompt and pair it with a report:
+
+```bash
+polycheck prompt --plain    # prints just the prompt
+```
+
+The LLM reads the report (not the source code) and triages each finding
+as REAL BUG, REAL SMELL, FALSE POSITIVE, or DEFERRED.
+
+---
+
 ## Configuration
 
 Drop a `.polycheck.yml` (or `.polycheck.toml`) at the repo root:
@@ -481,33 +364,6 @@ extra_args:             # per-tool extra CLI args
 disable:
   - sonarless
 ```
-
-### Baseline & durable suppressions
-
-The daily loop: run once, triage, snapshot — then only *new* code
-produces findings.
-
-```bash
-polycheck baseline .        # snapshot today's accepted findings
-polycheck run . --diff      # report only NEW findings (exit 1 gates on new ones)
-```
-
-The baseline stores fingerprints only (tool, rule, file, line,
-column) in `polycheck-reports/polycheck-baseline.json` — small, stable
-across message changes. Re-run `polycheck baseline` after fixing or
-triaging to move the needle forward.
-
-When the LLM (or you) classifies a finding as FALSE POSITIVE, persist
-that verdict so it is never re-argued:
-
-```yaml
-suppress:
-  - F401                    # suppress rule everywhere
-  - SC2086@scripts/legacy.sh  # suppress rule in one file only
-```
-
-Suppressed findings are dropped before reports are written and before
-the CI exit-code gate, so they never reappear in a later run.
 
 ---
 
@@ -604,6 +460,208 @@ chmod +x $HOME/.sonarless/sonarless
 environment, Docker may not be accessible due to snap confinement.
 Install Docker via apt (`sudo apt install docker.io`) instead of snap
 for full compatibility.
+
+---
+
+## MCP Server Reference
+
+polycheck ships an MCP server with a deliberately slim surface: **two
+tools**. Fewer tools means the LLM reliably picks the right one —
+diagnostics, listings, explanations, and installs belong to the CLI.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `polycheck.run` | Primary guided workflow: dependency check, optional install approval, scan, reports, coverage metadata, optional baseline diff (`diff: true`), and next action. Emits spec-standard MCP progress notifications when the client requests them. |
+| `polycheck.audit_run` | Low-level scan primitive: report paths, dependency context, and a one-line summary. |
+
+### Resources
+
+| Resource | Description |
+|----------|-------------|
+| `polycheck://session/latest` | Latest `polycheck.run` workflow summary. |
+| `polycheck://triage/prompt` | The interactive LLM triage prompt. |
+| `polycheck://setup` | Setup and operations guide for LLM agents: profiles, prerequisites (Docker for sonarless), install policy, the daily loop. |
+| `polycheck://findings/markdown` | Last run's markdown report. |
+| `polycheck://findings/json` | Last run's JSON report. |
+
+CLI equivalents of the retired MCP tools: `polycheck doctor`,
+`polycheck install`, `polycheck list-tools`, `polycheck explain`.
+
+**Driving polycheck with an LLM?** Point the agent at
+`polycheck://setup` and `polycheck doctor --json` first: the resource
+explains when to use which profile, that sonarless runs the SonarQube
+engine in a Docker container the sonarless CLI manages (manual install
+by design, Docker never auto-installed), and what polycheck will and
+will not install itself. The scan responses carry the same
+`profile_guidance` block, so the agent learns the modes even without
+reading the resource.
+
+### Manual MCP setup
+
+If you prefer not to use `polycheck init`, configure the MCP server manually.
+
+**Claude Code** — add to project `.mcp.json`, `~/.claude/settings.json`, or
+your Claude user MCP config:
+
+```json
+{
+  "mcpServers": {
+    "polycheck": {
+      "command": "polycheck",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Kilo Code (VSCode Extension)** — add to `kilo.jsonc` in your project root
+or `~/.config/kilo/kilo.jsonc`:
+
+```json
+{
+  "mcp": {
+    "polycheck": {
+      "type": "local",
+      "command": ["polycheck", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**OpenCode** — add to `opencode.jsonc` in your project root or
+`~/.config/opencode/opencode.jsonc`:
+
+```json
+{
+  "mcp": {
+    "polycheck": {
+      "type": "local",
+      "command": ["polycheck", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Any MCP-compatible tool** (generic JSON):
+
+```json
+{
+  "mcpServers": {
+    "polycheck": {
+      "command": "polycheck",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Docker / SonarQube:** SonarQube analysis through sonarless requires
+both Docker running and the `sonarless` binary installed. polycheck keeps
+sonarless enabled by default when those are available. If Docker is
+missing, polycheck reports it as a skipped system dependency and suggests
+asking your LLM coding assistant for OS-specific Docker setup help. If
+Docker is available but sonarless is missing, the guided MCP workflow
+offers to install sonarless before rerunning `polycheck.run`.
+
+### Code Mode friendly
+
+polycheck follows the [Code Mode](https://blog.cloudflare.com/code-mode/)
+guidance (Cloudflare, Anthropic *programmatic tool calling*, OpenCode 2.0
+default): tool definitions stay tiny (two tools, not ten), tool responses
+are compact summaries, and the heavy data lives in report **files** the
+agent reads selectively — only the final result ever needs to reach the
+model. For orchestration and ad-hoc composition, the CLI is the scripting
+layer (`polycheck run . --diff --fail-on HIGH | …`), which is the same
+pattern as Cloudflare's command-line approach. An execute-code MCP tool
+would duplicate the CLI, so there isn't one. polycheck also composes fine
+with agents that route MCP calls through a code-mode interpreter by default
+(OpenCode 2.x): responses are already compact, and the install-approval
+flow is result-based (`needs_user_input`), not mid-call.
+
+---
+
+## Use polycheck from an LLM skill
+
+The fastest way to teach any coding agent how to drive polycheck well:
+install the ready-made skill.
+
+```bash
+# Kilo Code (global)
+mkdir -p ~/.kilo/skills/polycheck
+curl -fsSL https://raw.githubusercontent.com/Phhofm/polycheck/main/polycheck-skill.md \
+  -o ~/.kilo/skills/polycheck/SKILL.md
+
+# Or from a local clone:
+cp polycheck-skill.md ~/.kilo/skills/polycheck/SKILL.md
+```
+
+The skill encodes the optimal usage: readiness check first
+(`polycheck doctor --json`), which profile for which situation, the
+triage → suppress → baseline loop, and the hard rules (findings come
+from reports only; never auto-install Docker; never pipe remote
+scripts). Claude Code users already get a skill via
+`polycheck init`; the file above is the standalone version for hosts
+without init support.
+
+---
+
+## Verifying every supported analyzer
+
+Use `polycheck verify-tools` when changing analyzer wrappers or installer
+logic. It creates synthetic repositories and verifies every registered tool:
+
+```bash
+polycheck verify-tools
+```
+
+Installed tools are run. Missing tools are reported as skipped. To attempt
+automatic installation for installable tools first:
+
+```bash
+polycheck verify-tools --install --yes
+```
+
+Docker/network-heavy tools are skipped by default because they can start
+Docker or reach package registries. Include them explicitly when that is
+acceptable:
+
+```bash
+polycheck verify-tools --include-heavy
+```
+
+For a full install-and-run verification of every supported analyzer, use:
+
+```bash
+polycheck verify-tools --install --yes --include-heavy
+```
+
+The heavy set currently includes `sonarless`, `semgrep`, `pip-audit`, and
+`npm-audit`:
+
+- `sonarless` requires Docker and the `sonarless` binary. Its installer is
+  Docker-aware and only runs when Docker is available.
+- `gitleaks`, `actionlint`, `hadolint`, and `shellcheck` are not downloaded
+  by polycheck (no unverified binaries); install them via your package
+  manager (`brew`, `apt`, `scoop`, …) or their GitHub releases — the exact
+  hint is shown by `polycheck doctor` / `verify-tools`.
+- `semgrep` may download rules when using `--config=auto`.
+- `pip-audit` queries PyPI to audit Python dependencies.
+- `npm-audit` queries the npm registry to audit Node dependencies.
+
+To verify every supported tool in the pytest suite, run the heavy marker:
+
+```bash
+pytest -m heavy
+```
+
+The default `pytest` run includes the heavy smoke test only when the tools are
+already installed or can be skipped safely; use `polycheck verify-tools
+--install --yes --include-heavy` when you explicitly want install-and-run
+coverage for every supported analyzer.
 
 ---
 
