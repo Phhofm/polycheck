@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.8 (2026-11-25)
+
+The SlopCodeBench composites become first-class scan metrics:
+
+  * **`polycheck-report.json` carries a top-level `metrics` key** with
+    scb-check's SlopCodeBench composites — `verbosity`, `erosion`,
+    `cog_erosion` plus the detail counts — on every scan that runs
+    scb-check. Diff them across runs to measure whether an
+    agent-assisted codebase stays stable or erodes turn over turn. The
+    markdown report gains a "Scan metrics" section. The key is omitted
+    entirely when no tool publishes metrics, keeping the schema stable
+    for consumers that diff reports.
+  * The scb-check adapter makes a second `scb-check check . --report`
+    invocation after the finding run (the human output carries no
+    composites); a failed metrics run never breaks the findings.
+  * Fixed: the run table swallowed bracket tokens like `[tool.tach]`
+    in not-applicable reasons — rich parsed them as style markup; cell
+    content is escaped now.
+  * Fixed: deptry's not-applicable row carried an empty reason; it now
+    states "no pyproject.toml" like the other manifest adapters.
+
+(Both fixes found by the second external reviewer loop.)
+
 ## 0.3.7 (2026-11-25)
 
 Fixes from the first external live test (a full reviewer loop in
