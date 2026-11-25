@@ -11,12 +11,19 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
 from .base import Tool
 
 # SonarQube severity → polycheck severity
+# SonarQube runs analyses asynchronously (Compute Engine) — poll for
+# the fresh lastAnalysis instead of checking once.
+_CE_POLL_INTERVAL_S = 5.0
+_CE_POLL_TIMEOUT_S = 120.0
+
 _SEVERITY_MAP = {
     "BLOCKER": Severity.CRITICAL,
     "CRITICAL": Severity.HIGH,
@@ -84,7 +91,31 @@ class SonarlessTool(Tool):
         )
 
     def run(self, repo: Path) -> list[Finding]:
-        # 1. Run sonarless scan
+        """Scan and query issues — raising instead of reporting clean.
+
+        External live test #7: sonarless printed "SonarQube scanning
+        failed!" and exited 0 (the SonarQube Java analyzer aborted on
+        Capacitor's uncompiled .java files); polycheck read the empty
+        issue list as no-findings. A run whose analysis did not land
+        on the SonarQube server must raise, never pass silently.
+        """
+        scan_started = datetime.now(timezone.utc)
+        props_path = repo / "sonar-project.properties"
+        created_props = False
+        if not props_path.exists():
+            # The SonarScanner reads sonar-project.properties when
+            # present; without it the Java analyzer aborts on
+            # Capacitor's uncompiled .java stubs (and node_modules is
+            # scanned wholesale) — external live test #7. Written only
+            # when the repo has none, removed after the scan.
+            props_path.write_text(
+                "sonar.exclusions="
+                "**/node_modules/**,**/dist/**,**/build/**,"
+                "**/android/**,**/ios/**\n"
+                "sonar.sourceEncoding=UTF-8\n",
+                encoding="utf-8",
+            )
+            created_props = True
         try:
             result = subprocess.run(
                 ["sonarless", "scan"],
@@ -93,16 +124,76 @@ class SonarlessTool(Tool):
                 text=True,
                 timeout=600,
             )
-            if result.returncode != 0:
-                # scan failed — return empty, runner will report it
-                return []
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return []
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            raise RuntimeError(f"sonarless scan failed to run: {exc}") from exc
+        finally:
+            if created_props:
+                props_path.unlink(missing_ok=True)
+        combined = (result.stdout or "") + (result.stderr or "")
+        if result.returncode != 0 or "scanning failed" in combined.lower():
+            detail = combined.strip()[:200] or f"exit {result.returncode}"
+            raise RuntimeError(f"sonarless scan failed: {detail}")
 
-        # 2. Query SonarQube API for individual issues
-        project_name = repo.name
-        findings = self._query_issues(project_name)
+        # SonarQube runs the analysis asynchronously on its Compute
+        # Engine: lastAnalysis updates only after the CE task finishes,
+        # so poll instead of checking once (external live test #7 —
+        # a one-shot check read a still-running analysis as "no
+        # analysis landed").
+        deadline = datetime.now(timezone.utc) + timedelta(
+            seconds=_CE_POLL_TIMEOUT_S
+        )
+        last: str | None = None
+        fresh = False
+        while datetime.now(timezone.utc) < deadline:
+            last = self._analysis_date(repo.name)
+            if last:
+                parsed = datetime.fromisoformat(last.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                if parsed >= scan_started - timedelta(minutes=5):
+                    fresh = True
+                    break
+            time.sleep(_CE_POLL_INTERVAL_S)
+
+        if not fresh:
+            state = "no analysis landed" if last is None else f"analysis stale ({last})"
+            raise RuntimeError(
+                "sonarless scan reported success but the SonarQube "
+                f"analysis did not complete within {_CE_POLL_TIMEOUT_S}s "
+                f"(project '{repo.name}': {state}) — inspect the scan "
+                "output above the API call"
+            )
+
+        findings = self._query_issues(repo.name)
         return findings
+
+    def _analysis_date(self, project_name: str) -> str | None:
+        """The project's analysis timestamp from the SonarQube API.
+
+        Field verified against SonarQube Community Build 26.4:
+        `api/navigation/component` returns `analysisDate`, while
+        `components/show.lastAnalysis` and `projects/search.lastAnalysis`
+        are always null on this build (live test #7 — the reviewer hit
+        the same wrong-field trap).
+        """
+        import requests
+        from requests.auth import HTTPBasicAuth
+
+        url = f"http://localhost:{SONAR_PORT}/api/navigation/component"
+        try:
+            resp = requests.get(
+                url,
+                params={"component": project_name},
+                auth=HTTPBasicAuth(SONAR_USER, SONAR_PASS),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json().get("analysisDate")
+        except (requests.RequestException, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"sonarless: could not read the project's analysis date "
+                f"from the SonarQube API: {exc}"
+            ) from exc
 
     def _query_issues(self, project_name: str) -> list[Finding]:
         """Query the SonarQube REST API for per-file issues."""
@@ -116,8 +207,8 @@ class SonarlessTool(Tool):
             resp = requests.get(url, params=params, auth=HTTPBasicAuth(SONAR_USER, SONAR_PASS), timeout=30)
             resp.raise_for_status()
             data = resp.json()
-        except (requests.RequestException, json.JSONDecodeError):
-            return []
+        except (requests.RequestException, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"sonarless: issues API failed: {exc}") from exc
 
         issues = data.get("issues", [])
         findings: list[Finding] = []

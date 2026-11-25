@@ -331,6 +331,35 @@ after, verdict, reason.
     fix;   macOS coverage is suspended until capacity is dependable.
   Next loop: zizmor.
 
+* **2026-11-25 — external live test #7 (Loop 5, 0.3.11, ionic-vue-new
+  deep run) — sonarless failed silently and polycheck read it as
+  clean.** The chain: sonarless printed "SonarQube scanning failed!"
+  and exited 0 (the SonarQube Java analyzer aborts on Capacitor's
+  uncompiled .java stubs — including ones under node_modules/@capacitor);
+  the adapter saw rc 0, queried the issues API, got zero issues, and
+  reported **no-findings** — the D1 failure mode, three `return []`
+  swallow paths in sonarless.py. Also: `npm-audit` reported
+  installed=False forever because the base `is_installed` uses the
+  tool NAME as the binary (`npm-audit` is not an executable — binary
+  is `npm`), and `.polycheck/` showed up untracked in git status.
+  Fixes, all verified: (1) sonarless raises on scanner failure
+  markers, non-zero exits, timeout, and issues-API errors; (2) the
+  scan's success is verified against the SonarQube server by polling
+  the analysis date — **field-verified endpoint: `api/navigation/
+  component` → `analysisDate`; `components/show.lastAnalysis` is
+  always null on Community Build 26.4** (the reviewer hit the same
+  wrong-field trap, and my first implementation trusted it until the
+  heavy smoke test caught the poll never seeing a value); (3) the
+  adapter writes a `sonar-project.properties` with default exclusions
+  (`**/node_modules/**`, `**/android/**`, `**/ios/**`) when the repo
+  has none — the SonarScanner reads it natively — and removes it
+  after the scan; (4) `binary = "npm"` for npm-audit; (5) session
+  writes keep `.polycheck/` out of git (appends once, marked).
+  Verdict: KEPT. Sonarless is now genuinely usable in Capacitor-type
+  repos; the deep rerun on ionic-vue-new should surface the real
+  SonarQube findings instead of silence.
+
+
 * **2026-11-25 — external live test #6 (Loop 4, 0.3.11, ionic-vue-new:
   ionic/vue frontend + nestjs backend) — two real polycheck bugs with
   one shared root cause.** The deep run surfaced 1415 CRITICALs

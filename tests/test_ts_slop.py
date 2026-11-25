@@ -191,3 +191,15 @@ def test_scan_path_is_relative_so_findings_are_relative(monkeypatch, tmp_path: P
 
     scan_path = captured["cmd"][-1]
     assert not Path(scan_path).is_absolute(), scan_path
+
+
+def test_npm_audit_binary_is_npm(monkeypatch):
+    """Live test #7: the default binary IS the tool name — 'npm-audit'
+    is not a binary, so the adapter reported installed=False forever."""
+    from polycheck.tools.npm_audit import NpmAuditTool
+
+    monkeypatch.setattr(
+        "polycheck.tools.npm_audit.shutil.which",
+        lambda name: "/usr/bin/npm" if name == "npm" else None,
+    )
+    assert NpmAuditTool().is_installed() is True

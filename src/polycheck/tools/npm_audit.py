@@ -30,6 +30,9 @@ class NpmAuditTool(Tool):
     category = Category.CVE
     languages = ["javascript", "typescript"]
     installer = None   # npm comes with Node.js; no separate install needed
+    binary = "npm"  # the default binary IS the tool name — "npm-audit"
+    # is not an executable, so the base is_installed() never matched
+    # (live test #7: the tool reported installed=False forever).
 
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "package.json").exists()

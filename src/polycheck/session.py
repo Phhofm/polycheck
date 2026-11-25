@@ -17,10 +17,31 @@ def run_dir(repo: Path, run_id: str) -> Path:
     return repo / ".polycheck" / "runs" / run_id
 
 
+def _ensure_session_gitignore(repo: Path) -> None:
+    """Keep `.polycheck/` (machine-local session state) out of git.
+
+    `polycheck-reports/` stays tracked by design (README: reports are
+    git-tracked); the session directory is working state. Appends the
+    entry once, marked with a polycheck comment.
+    """
+    gitignore = repo / ".gitignore"
+    try:
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+        if ".polycheck/" in existing:
+            return
+        with gitignore.open("a", encoding="utf-8") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            f.write("# polycheck session state (machine-local)\n.polycheck/\n")
+    except OSError:
+        pass  # session state must never fail a scan over gitignore upkeep
+
+
 def append_event(repo: Path, run_id: str, event: dict[str, Any]) -> Path:
     """Append one structured progress event to the run log."""
     directory = run_dir(repo, run_id)
     directory.mkdir(parents=True, exist_ok=True)
+    _ensure_session_gitignore(repo)
     path = directory / "run.jsonl"
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **event}
     with path.open("a", encoding="utf-8") as f:
