@@ -212,11 +212,15 @@ codebase that otherwise looks green — no failing tests, no type errors,
 and yet the same logic living in three places and one function carrying
 half the complexity.
 
-The slop-pattern rules are Python-specific today; duplication and
-erosion metrics are cross-language. Structural decay across *modules*
-(circular imports, boundary violations) is covered separately by the
-structural adapters (`tach` for Python, `dependency-cruiser` for
-JS/TS) in the deep profile.
+The slop-pattern rules are Python-specific today **plus a first
+polycheck-authored TypeScript set (`ts-slop`, ast-grep-based — index
+loops, type-system escape hatches like `as any`/`as unknown as`/
+`@ts-ignore`, empty catch blocks)**; duplication and erosion metrics
+are cross-language. Structural decay across *modules* (circular
+imports, boundary violations) is covered separately by the structural
+adapters (`tach` for Python, `dependency-cruiser` for JS/TS) in the
+deep profile. Vue SFCs are not covered yet (ast-grep skips `.vue`
+without a custom parser).
 
 **Trendable composites:** `polycheck-report.json` carries the
 SlopCodeBench composites (verbosity, erosion, cog_erosion) under a
@@ -437,6 +441,7 @@ disable:
 | Universal          | gitleaks        | Secrets in the working tree             |
 | Universal          | scb-check       | AI-slop metrics: duplicated AST blocks, slop patterns (`range(len(x))`, `dict.get(k, None)`, trivial wrappers), and erosion (complexity-mass concentration) — the measurable DRY/KISS proxies, built for the [SlopCodeBench](https://www.scbench.ai) erosion model |
 | Universal          | semgrep         | Pattern-based security (multi-language) |
+| TypeScript         | ts-slop         | Polycheck-authored TS slop rules (ast-grep): index loops, `as any`/`as unknown as` escape hatches, `@ts-ignore`, empty catch, `!!` casts |
 | Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
 | GitHub Actions     | actionlint      | Workflow file linter                    |
 | Shell              | shellcheck      | Shell script linter                     |

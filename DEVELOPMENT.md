@@ -70,7 +70,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 237 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 245 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.9** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
@@ -617,21 +617,28 @@ after, verdict, reason.
 ## Backlog: 0.3.4+ (profiles & structural adapters)
 
 **TS/Vue slop rules (investigated 2026-11-25, evidence-first):** Philip's
-portfolio is TS/Vue-heavy, but slop patterns are Python-only today.
+portfolio is TS/Vue-heavy, but slop patterns were Python-only.
 Verified against scb-check 0.2.0 (the bundled analyzer):
 `resources/slop_rules/` ships 197 rules, **all `language: python`**; the
 `SCB_CHECK_EXTRA_SLOP_RULES` env mechanism exists but does NOT reach the
 analysis pipeline — `pipeline.py` loads only the bundled `rules_file()`;
 extra rules feed the `rule` metadata command only (verified in source;
 a custom TS rule via the env var never fires on a seeded `.ts` file
-while a bundled Python rule does). Two paths:
-1. **Upstream**: file an issue/PR on gabeorlanski/scb-check (author =
-   paper first author; zero open issues today) — multi-language rules
-   plus the extra-rules-don't-reach-the-analysis bug.
-2. **polycheck-side ast-grep adapter** with polycheck-authored TS/Vue
-   slop rules (own iteration block per D1, seeded expectation;
-   namespaced rule IDs so findings never collide with scb-check's).
-Recommended: (2) for the portfolio's immediate value, (1) in parallel.
+while a bundled Python rule does). Upstream path rejected by Philip
+(no issue). **Implemented 2026-11-25 (0.3.10): polycheck-authored
+ast-grep adapter `ts-slop`** — 8 verified TS rules shipped as package
+data (`ts_slop_rules.yaml`: ts-for-index, ts-as-unknown-as,
+ts-object-as-cast, ts-if-bool-return, ts-double-not, ts-empty-catch,
+ts-ignore-comment, ts-as-any), ast-grep via `npm:@ast-grep/cli` with
+the npx package-name fallback, severity error→MEDIUM / warning→LOW /
+hint→INFO. ast-grep quirks pinned in tests: the 0-indexed `--json`
+output, the for-statement pattern needing the `$$$B` body capture
+(the bare header form silently never matches), and `.vue` files being
+silently skipped (no builtin language — needs ast-grep's external-
+language config, deferred with evidence). Seeded expectation
+`ts-slop: 2` verified `ok` against the real binary (0.5 s); live run
+on a NestJS-style service file caught both seeded defects with
+correct locations.
 
 **Metrics history / deltas (idea from the 0.3.9 reflection, 2026-11-25):**
 the composites are a compass, not a map — they say WHETHER code degraded,

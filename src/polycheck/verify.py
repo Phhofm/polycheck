@@ -34,6 +34,7 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "scb-check": 3,   # two slop patterns + one duplicated block
     "tach": 1,        # widgets/ imports app without declaring the dependency
     "dependency-cruiser": 1,  # cycleA.js <-> cycleB.js, no-circular rule
+    "ts-slop": 2,     # index-for-push + as-unknown-as in sloppy.ts
 }
 
 
@@ -358,5 +359,18 @@ jobs:
         (repo / "cycleB.js").write_text(
             'const { a } = require("./cycleA.js");\n'
             "module.exports = { b: () => a() };\n",
+            encoding="utf-8",
+        )
+
+    if tool_name == "ts-slop":
+        # ts-slop seeds: two of the shipped TypeScript slop patterns —
+        # an index for-loop pushing into a new array, and an
+        # `as unknown as` double cast.
+        (repo / "sloppy.ts").write_text(
+            "const out: string[] = [];\n"
+            "for (let i = 0; i < users.length; i++) {\n"
+            "  out.push(users[i].name);\n"
+            "}\n"
+            "const anyVal = data as unknown as string;\n",
             encoding="utf-8",
         )

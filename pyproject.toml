@@ -64,7 +64,7 @@ Changelog = "https://github.com/Phhofm/polycheck/blob/main/CHANGELOG.md"
 where = ["src"]
 
 [tool.setuptools.package-data]
-polycheck = ["py.typed"]
+polycheck = ["py.typed", "tools/resources/*.yaml"]
 
 [tool.ruff]
 line-length = 100

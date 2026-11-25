@@ -1,0 +1,82 @@
+---
+id: ts-for-index
+language: ts
+severity: warning
+message: "index for-loop over an array - prefer for-of, map(), filter(), or find()"
+metadata:
+  category: slop
+rule:
+  kind: for_statement
+  pattern: "for (let $I = 0; $I < $X.length; $I++) $$$B"
+---
+id: ts-as-unknown-as
+language: ts
+severity: error
+message: "double cast `as unknown as T` - fix the type instead"
+metadata:
+  category: slop
+rule:
+  kind: as_expression
+  pattern: "$X as unknown as $T"
+---
+id: ts-object-as-cast
+language: ts
+severity: warning
+message: "empty object cast to a type - construct a real object"
+metadata:
+  category: slop
+rule:
+  kind: as_expression
+  pattern: "{} as $T"
+---
+id: ts-if-bool-return
+language: ts
+severity: warning
+message: "if/else returning booleans - return the expression directly"
+metadata:
+  category: slop
+rule:
+  kind: if_statement
+  any:
+    - pattern: "if ($C) { return true } else { return false }"
+    - pattern: "if ($C) { return false } else { return true }"
+---
+id: ts-double-not
+language: ts
+severity: hint
+message: "double negation cast - prefer Boolean($X)"
+metadata:
+  category: slop
+rule:
+  kind: unary_expression
+  pattern: "!!$X"
+---
+id: ts-empty-catch
+language: ts
+severity: warning
+message: "empty catch block swallows errors - log or rethrow"
+metadata:
+  category: slop
+rule:
+  kind: try_statement
+  pattern: "try { $$$A } catch { $$$E }"
+---
+id: ts-ignore-comment
+language: ts
+severity: warning
+message: "@ts-ignore suppresses a real type error - fix the type"
+metadata:
+  category: slop
+rule:
+  kind: comment
+  regex: "@ts-ignore"
+---
+id: ts-as-any
+language: ts
+severity: warning
+message: "`as any` discards type safety - type it properly"
+metadata:
+  category: slop
+rule:
+  kind: as_expression
+  pattern: "$X as any"
