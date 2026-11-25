@@ -70,7 +70,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 245 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 257 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.9** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
