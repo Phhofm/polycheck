@@ -6,12 +6,33 @@ Single log for progress, decisions, and experiments. Task checklists live in
 
 ## Next session start here
 
-0.3.4 (profiles, tach, quality questions) and 0.3.5 (pr-scope gate-hole
-fix) shipped and released. The next block (0.3.6, committed on dev —
-release pending Philip's go): **dependency-cruiser** as the JS/TS
-structural counterpart to tach, plus the README anti-AI-slop section.
-The 0.3.5 lesson is the headline: the post-release pipx E2E caught a
-gate hole the pre-release runs missed.
+0.3.6 is released (dependency-cruiser, LLM readiness surface, README
+why-first + skill file, CI trigger hygiene). **Philip's next block is
+the external live test**: pick one of his real repos, install
+`polycheck-skill.md` into `~/.kilo/skills/polycheck/`, run
+`polycheck init`, then let the vibecode skill drive `/polycheck` —
+watch whether the agent does the doctor-first preflight, picks the
+right profile, and runs the triage → suppress → baseline loop. This is
+the test that historically produced the meta-findings (#1–#5).
+
+After that, the adapter roadmap (one per iteration, D1, seeded
+expectation required): **zizmor** (GitHub Actions security — actionlint
+only does syntax; every repo has workflows) or **scb-check slop
+patterns for JS/TS** (`unwrap`-style chains don't apply, but
+duplicate-variant helpers do). Rust (clippy/cargo-audit) only when a
+Rust project actually appears; osv-scanner/golangci-lint rejected for
+now (they duplicate existing coverage on Philip's JS/Python repos).
+
+Working agreement (Philip, 2026-11-25): **everything is verified in this
+repo first** — local gates green, live run on a scratch/synthetic repo,
+pipx E2E from a fresh install — *then* it gets tested in other repos.
+Releases: assert-anchored changelog insert, `&&`-chained gates before
+commit, tag, PyPI verification — see the 0.3.2 process-miss entry in
+Experiments.
+
+Also read before starting: the *Experiments* log (live-test history and
+the two external live tests that produced meta-findings #1–#5, all fixed
+or logged), the *Decisions* section, and the *Backlog* section.
 
 Suggested next block (from the backlog, one per iteration, D1):
 
@@ -51,11 +72,12 @@ pipx-installed.
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
 | Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 221 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
-Latest release: **0.3.5** (tagged this session; verify on PyPI after the
-publish workflow finishes). v0.3.0–v0.3.4 all released via Trusted
-Publishing. CI note: GitHub runner capacity queued test-matrix runs for
-hours on 2026-11-23/24 — Release workflows stayed green; local gates are
-the verification chain.
+Latest release: **0.3.6** on PyPI (JSON API verified + fresh pipx E2E);
+v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
+capacity queued CI matrix runs for hours on 2026-11-23/24 — 2026-11-25
+the ~30 stale queued runs were canceled and the trigger fixed (docs-only
+pushes skip the matrix; same-SHA dev+main pushes dedupe via a
+concurrency group). Local gates remain the verification chain.
 
 Environment notes discovered this session:
 
@@ -217,6 +239,18 @@ after, verdict, reason.
   (prefix /usr, needs root) — npx fallback covers it; sonarless was
   live-audited earlier the same day and the container persists after
   scans (`sonarless docker-clean` to remove it). Verdict: KEPT.
+
+* **2026-11-25 — CI queue: 10 jobs per push stacked ~30 runs in the
+  queue.** Finding: every push to dev/main ran a 9×3 test matrix +
+  selfcheck — including docs-only pushes and the dev+main double-push of
+  release commits — while the free-tier macOS pool queued hardest. Metric:
+  `gh run list --status queued` = 30 CI runs, some waiting since
+  2026-11-24. Fix: `paths-ignore` (`**.md`, LICENSE, `.gitignore`) so
+  docs-only pushes skip the matrix; `concurrency: group: ci-<sha>` with
+  cancel-in-progress so a release commit pushed to dev AND main runs the
+  matrix once; the 30 stale queued runs (all ancestors of current dev)
+  canceled via `gh run cancel`. Verdict: KEPT. Not done: trimming the
+  Python matrix to 2 versions (Philip's call — costs 3.12 signal).
 
 * **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
   insight: polycheck is driven by LLMs, but the operational knowledge

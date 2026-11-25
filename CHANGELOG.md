@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.3.6 (2026-11-25)
+
+The JS/TS structural adapter, a machine-readable readiness surface for
+LLM agents, and a README that now leads with the why:
+
+Features:
+  * **`dependency-cruiser` adapter** — second structural adapter
+    (`ARCHITECTURE` category, deep profile): circular dependencies and
+    path/layer rules from `depcruise --output-type json`. Runs when the
+    repo carries a `.dependency-cruiser.*` config. Shape-pinned against
+    real 18.9.0 output (violations live in `summary.violations`;
+    violations do not change the exit code; the npm fallback must use
+    the package name, `npx depcruise` resolves a placeholder).
+  * **LLM readiness surface** — `polycheck doctor --json`: every
+    analyzer with `installed`/`install_hint`/`auto_installable` and the
+    scan `profiles` it participates in, system prerequisites (Docker for
+    sonarless), profile guidance, and the install policy (what polycheck
+    installs itself — and what it never does). New MCP resource
+    `polycheck://setup` (setup/operations guide for agents) and a
+    `profile_guidance` block in both scan responses.
+  * `/polycheck` workflow gains a readiness preflight step before the
+    first deep run: propose missing prerequisites (Docker, sonarless) to
+    the user; never auto-install either.
+  * **`polycheck-skill.md`** — a ready-to-install agent skill encoding
+    the optimal usage (readiness first, profile choice, triage →
+    suppress → baseline, hard rules). Claude Code users get a skill via
+    `polycheck init`; this is the standalone version.
+  * README: leads with the why — SlopCodeBench (Orlanski et al., 2026,
+    arXiv:2603.24755) measured that coding agents degrade codebases
+    across iterative extension (erosion in 77 % of trajectories, agent
+    code 2.3× more verbose than human repos) and that prompt-level
+    quality guidance does not change the degradation rate. polycheck
+    applies those findings as deterministic checks. Plus: anti-AI-slop
+    section and a restructure (most important first).
+
+Fixed:
+  * **knip** reported not-installed on machines without a global knip
+    binary even though its `run()` falls back to `npx knip` — the
+    fallback was unreachable. Same fix applied to dependency-cruiser.
+  * mypy surfaced latent false positives against the mcp SDK's dynamic
+    decorator API — handled with a documented `follow_imports = skip`
+    override instead of scattered ignores.
+
+CI:
+  * docs-only pushes skip the 9×3 test matrix; a release commit pushed
+    to dev AND main runs the matrix once (SHA concurrency group).
+
 ## 0.3.5 (2026-11-25)
 
 Fixed:
