@@ -81,6 +81,22 @@ Format: id, date, decision, reason, status. User decisions override anything her
 Format per §7: date, hypothesis/recommendation, metric + command, before →
 after, verdict, reason.
 
+* **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
+  bigger-repo test.** Live-test feedback turned into features: (1) track
+  annotation (batch `git ls-files` + `git check-ignore --stdin`, zero
+  per-finding spawns), gate counts tracked+untracked, reports show
+  buckets — the 1717-raw-finding headline problem solved at the
+  runner/reporter layer, not per-adapter; (2) gitleaks allowlist gains
+  the repo's gitignored paths (collapsed dirs from
+  `git ls-files -o -i --exclude-standard --directory`; hyphens
+  un-escaped after re.escape — `test\-results` does not literal-match);
+  (3) reviewer template: doc-verification/applicability rule for
+  concrete config values (invented `min-release-age = 7` case), cited
+  lines must be read before proposing actions (already-satisfied code →
+  FALSE POSITIVE with evidence — the template-literal case), return
+  format carries coverage gaps. The colleague loop's full cycle (scan →
+  triage → choice → fix → re-scan green) ran between 0.3.2 and 0.3.3.
+
 * **2026-11-23 — seeded-defect verifier (plan 1.13) exposed 6 more silently
   broken adapters (RED→GREEN).** Hypothesis: tools that run clean on a repo
   seeded with defects they must catch are broken, so `verify-tools` must fail
@@ -303,41 +319,88 @@ after, verdict, reason.
 1. ~~Four adapter fixes with regression tests~~ — done 2026-11-23.
 2. ~~Env-dependent sonarless test fix~~ — done 2026-11-23.
 3. ~~mypy pragmatic config so the strict gate is green~~ — done 2026-11-23.
-4. ~~Seeded-defect verifier hardening (1.13)~~ — done 2026-11-23; also exposed
-   and fixed 6 more broken adapters. eslint verified end-to-end via local
-   npm; knip expectation still undecided.
-5. ~~Baseline + diff + durable suppressions (D2)~~ — done 2026-11-23.
-6. ~~README reframe (D3), release workflow (2.2)~~ — done; 0.2.0 and 0.2.1
-   released and verified on PyPI.
-7. ~~CI (2.1)~~ — green across the matrix; macOS hosted pools starved
-   intermittently (GitHub capacity, not code) — macos-13 switch mitigates.
-8. ~~PyPI release pipeline~~ — proven twice (0.2.1, 0.3.0); the 0.3.0
-   first attempt exposed a release-commit mistake (pyproject omitted from
-   staging), fixed and documented above.
-9. ~~Reviewer subagent + pre-push gate~~ — done 2026-11-24 (0.3.0).
-10. ~~0.3.1 candidates~~ — partially done: scb-check adapter shipped (covers
-    DRY-proxy via clone detection + slop patterns + erosion); Kilo/OpenCode
-    agent paths verified against live installs and OpenCode V2 docs
-    (`.opencode/agents/` plural, `~/.config/kilo/agents/`); remaining:
-    mypy strictness presets per language; knip expectation.
-11. Optional later: CodeQL as an optional heavy adapter; coverage tooling
-    for test-coverage reporting (currently out of scope by design).
-12. **Note (2026-11-24):** GitHub Actions runner capacity was constrained
+4. ~~Seeded-defect verifier hardening (1.13)~~ — done; also fixed 6 more
+   broken adapters; eslint verified via local npm; knip expectation still
+   undecided.
+5. ~~Baseline + diff + durable suppressions (D2)~~ — done.
+6. ~~README reframe, release pipeline~~ — done; 0.2.0–0.3.3 released and
+   verified on PyPI.
+7. ~~CI (2.1)~~ — green; GitHub runner capacity caused multi-hour queues
+   (2026-11-23/24) — infrastructure, logged below.
+8. ~~Reviewer subagent + pre-push gate (0.3.0)~~ — done; two external
+   live tests validated the full loop (scan → triage → choice → fix →
+   re-scan green).
+9. ~~Track buckets, gitleaks gitignore-awareness, reviewer rules
+   (0.3.3)~~ — done from the bigger-repo live test (1717 raw → 7 real).
+10. ~~extra_args plumbing (0.3.2)~~ — done (meta-finding #4 from the
+    colleague loop).
+
+## Backlog: 0.3.4+ (profiles & structural adapters)
+
+**Profiles — design decision (2026-11-25):** two named profiles plus the
+unchanged default, presets over existing primitives (tool selection,
+scoping, gate) — no new engines.
+
+* **`--profile pr`** — for pre-push/PR checks and the hook: same
+  applicable fast tools, but **scoping to changed tracked files** (git
+  diff vs HEAD or merge-base), gate HIGH. Findings in files that did not
+  change are out of scope; a baseline further filters known findings.
+* **`--profile deep`** — project-onboarding and periodic full pass: heavy
+  tools ON (sonarless, semgrep, pip-audit, npm-audit), structural
+  adapters as they land, no gate by default; output feeds triage →
+  baseline → suppressions.
+* **Default stays as-is** (whole-repo fast scan, MEDIUM gate): it is the
+  re-scan-after-sweep confirmation step and the daily scan with baseline
+  filtering — a named "dev" profile would be the same thing twice (see
+  the design debate in the experiments log).
+* The pre-push hook switches to `--profile pr`; `/polycheck` gains a
+  mode argument (default dev scan; `deep` on onboarding).
+
+**Structural adapters (deep profile), one per iteration, seeded-verifier
+expectation required each (D1):**
+
+* **import-linter or tach** (Python) — circular imports, layer
+  violations, modularity. First architecture adapter; new
+  `Category.ARCHITECTURE` if landed. dependency-cruiser as the JS/TS
+  counterpart afterwards.
+* **interrogate** — docstring coverage per public symbol
+  (documentation coverage, deterministic).
+* **ncu / `pip list --outdated`** — dependency drift and deprecation
+  (deep profile only, noise-bewusst).
+* **osv-scanner** — multi-ecosystem CVE consolidation (opt-in; pip-audit
+  + npm-audit cover Python/Node today).
+* **fallow** — TS/JS module-graph all-in-one; young project, adopt only
+  after verification against real output.
+* **ls-lint** — file-naming conventions; YAGNI until requested.
+* **Native repo-hygiene mini-check** — giant monolith files (>800 LOC),
+  `*.bak`/`temp_*` clutter, orphaned test files; no external dependency,
+  on-brand anti-agent-clutter.
+* Explicitly rejected for now: radon/lizard (sonarless + scb-check cover
+  complexity), jscpd (scb-check covers cross-language clones),
+  ncu-as-default (noise), coverage tooling (needs running test suites —
+  categorically different; heavy-opt-in later at most).
+
+**Reviewer template — "Quality Questions" section (deep profile):**
+Principles that cannot be measured deterministically become checklist
+questions for the LLM, never fabricated findings: SRP, SOLID, Law of
+Demeter, meaningful names, comments-for-why, design patterns,
+observability, scalability. Performance stays out of scope (no runtime
+data). Test coverage needs running test suites — heavy-opt-in at most.
+
+**Cross-model audit:** fresh-model audit of the heavy adapters
+(sonarless/pip-audit/npm-audit/semgrep) against real CLI/API payloads —
+their parsing rests on assumed shapes and the seeded verifier skips
+heavy tools. The colleague's suggested audit prompt is good; scope it to
+what the fixtures do not already cover.
+
+**Language gaps / docs:** `.vue`/Svelte/Angular SFCs are not eslint-
+scanned (plugin + parser needed) — document the `extra_args` recipe;
+CodeRabbit noted as a different lane (LLM review SaaS), not a polycheck
+concern.
+
+## Closed / historical notes
+
+* ~~Note (2026-11-24): GitHub Actions runner capacity was constrained
     all day — CI runs queued for hours (macOS starvation overnight, then
     the whole matrix). Local gates + the Release workflow + PyPI serve as
-    the verification chain; CI catches up when capacity returns.
-* **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
-  bigger-repo test.** Live-test feedback turned into features: (1) track
-  annotation (batch `git ls-files` + `git check-ignore --stdin`, zero
-  per-finding spawns), gate counts tracked+untracked, reports show
-  buckets — the 1717-raw-finding headline problem solved at the
-  runner/reporter layer, not per-adapter; (2) gitleaks allowlist gains
-  the repo's gitignored paths (collapsed dirs from
-  `git ls-files -o -i --exclude-standard --directory`; hyphens
-  un-escaped after re.escape — `test\-results` does not literal-match);
-  (3) reviewer template: doc-verification/applicability rule for
-  concrete config values (invented `min-release-age = 7` case), cited
-  lines must be read before proposing actions (already-satisfied code →
-  FALSE POSITIVE with evidence — the template-literal case), return
-  format carries coverage gaps. The colleague loop's full cycle (scan →
-  triage → choice → fix → re-scan green) ran between 0.3.2 and 0.3.3.
+    the verification chain; CI catches up when capacity returns.~~
