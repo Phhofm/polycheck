@@ -616,6 +616,23 @@ after, verdict, reason.
 
 ## Backlog: 0.3.4+ (profiles & structural adapters)
 
+**TS/Vue slop rules (investigated 2026-11-25, evidence-first):** Philip's
+portfolio is TS/Vue-heavy, but slop patterns are Python-only today.
+Verified against scb-check 0.2.0 (the bundled analyzer):
+`resources/slop_rules/` ships 197 rules, **all `language: python`**; the
+`SCB_CHECK_EXTRA_SLOP_RULES` env mechanism exists but does NOT reach the
+analysis pipeline — `pipeline.py` loads only the bundled `rules_file()`;
+extra rules feed the `rule` metadata command only (verified in source;
+a custom TS rule via the env var never fires on a seeded `.ts` file
+while a bundled Python rule does). Two paths:
+1. **Upstream**: file an issue/PR on gabeorlanski/scb-check (author =
+   paper first author; zero open issues today) — multi-language rules
+   plus the extra-rules-don't-reach-the-analysis bug.
+2. **polycheck-side ast-grep adapter** with polycheck-authored TS/Vue
+   slop rules (own iteration block per D1, seeded expectation;
+   namespaced rule IDs so findings never collide with scb-check's).
+Recommended: (2) for the portfolio's immediate value, (1) in parallel.
+
 **Metrics history / deltas (idea from the 0.3.9 reflection, 2026-11-25):**
 the composites are a compass, not a map — they say WHETHER code degraded,
 not WHAT to fix. To make the compass self-reading, persist the per-scan
