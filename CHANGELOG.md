@@ -1,6 +1,33 @@
 # Changelog
 
-## 0.3.12 (2026-11-25)
+## 0.3.13 (2026-11-25)
+
+Fixed — sonarless could report a FAILED SonarQube scan as **no-findings**
+(found by the ionic-vue/nestjs live test):
+
+  * **Failure detection**: sonarless exits 0 even when the SonarQube
+    scan fails (e.g. the Java analyzer aborting on Capacitor's
+    uncompiled `.java` stubs). The adapter now raises on failure
+    markers, non-zero exits, timeouts, and issues-API errors — a run
+    whose analysis did not land on the server never reads as clean.
+  * **Success verification**: the adapter polls the SonarQube server
+    for the fresh analysis timestamp after the scan. Field-verified
+    endpoint on Community Build 26.4: `api/navigation/component` →
+    `analysisDate` (`components/show.lastAnalysis` is always null on
+    this build).
+  * **Default scanner exclusions**: the adapter writes a
+    `sonar-project.properties` with `sonar.exclusions`
+    (`**/node_modules/**`, `**/dist/**`, `**/build/**`,
+    `**/android/**`, `**/ios/**`) when the repo has none — without it
+    the Java analyzer aborts on Capacitor stubs — and removes the file
+    after the scan. Existing properties files are left untouched.
+  * **npm-audit reported installed=False forever** — the default
+    binary check used the tool name (`npm-audit` is not an
+    executable); the binary is `npm`.
+  * Session state: `.polycheck/` is kept out of git automatically
+    (appended once to `.gitignore`); `polycheck-reports/` stays
+    tracked by design.
+
 
 Fixed — one shared root cause, found by the ionic-vue/nestjs live test:
 
