@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool, iter_source_files
+from .base import Tool, iter_source_files, npx_command
 
 
 class EslintTool(Tool):
@@ -63,7 +63,7 @@ class EslintTool(Tool):
         if shutil.which("eslint"):
             cmd = ["eslint", "--format=json", "--no-warn-ignored", *self.extra_args(), *files]
         else:
-            cmd = ["npx", "eslint", "--format=json", "--no-warn-ignored", *self.extra_args(), *files]
+            cmd = [*npx_command(), "eslint", "--format=json", "--no-warn-ignored", *self.extra_args(), *files]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

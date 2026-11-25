@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, npx_command
 
 _TSC_LINE = re.compile(
     r"^(?P<file>[^:(][^:]*?)\((?P<line>\d+),(?P<col>\d+)\):\s*"
@@ -43,7 +43,7 @@ class TscTool(Tool):
         if shutil.which("tsc"):
             cmd = ["tsc", "--noEmit", "--pretty", "false", *self.extra_args()]
         else:
-            cmd = ["npx", "tsc", "--noEmit", "--pretty", "false", *self.extra_args()]
+            cmd = [*npx_command(), "tsc", "--noEmit", "--pretty", "false", *self.extra_args()]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

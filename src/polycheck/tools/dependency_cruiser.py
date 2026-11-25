@@ -27,7 +27,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, npx_command
 
 _CONFIG_NAMES = (
     ".dependency-cruiser.cjs",
@@ -76,7 +76,7 @@ class DependencyCruiserTool(Tool):
     def _command(self) -> list[str]:
         if shutil.which(self.binary):
             return [self.binary]
-        return ["npx", "--yes", "dependency-cruiser"]
+        return [*npx_command(), "--yes", "dependency-cruiser"]
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which(self.binary) is None and shutil.which("npx") is None:

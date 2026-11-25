@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, npm_command
 
 # npm's severity string → our Severity
 _NPM_SEV = {
@@ -40,7 +40,7 @@ class NpmAuditTool(Tool):
         if shutil.which("npm") is None:
             return []
         out = subprocess.run(
-            ["npm", "audit", "--json"],
+            [*npm_command(), "audit", "--json"],
             cwd=repo, capture_output=True, text=True, timeout=300
         )
         # npm audit exits non-zero on findings; we ignore that.

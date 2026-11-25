@@ -29,6 +29,26 @@ from typing import TYPE_CHECKING
 
 from ..finding import Category, Finding
 
+
+def npx_command() -> list[str]:
+    """argv prefix that runs ``npx`` portably.
+
+    On Windows, npm's shims are ``.cmd`` files that CreateProcess
+    cannot execute directly (the smoke test caught WinError 2 there);
+    route them through ``cmd /c``. Elsewhere the PATH shim is enough.
+    """
+    if os.name == "nt":
+        return ["cmd", "/c", "npx"]
+    return ["npx"]
+
+
+def npm_command() -> list[str]:
+    """argv prefix that runs ``npm`` portably — see :func:`npx_command`."""
+    if os.name == "nt":
+        return ["cmd", "/c", "npm"]
+    return ["npm"]
+
+
 if TYPE_CHECKING:
     from ..config import Config
 

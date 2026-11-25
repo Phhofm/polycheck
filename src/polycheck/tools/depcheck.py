@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
-from .base import Tool
+from .base import Tool, npx_command
 
 
 class DepcheckTool(Tool):
@@ -37,7 +37,7 @@ class DepcheckTool(Tool):
         if shutil.which("depcheck"):
             cmd = ["depcheck", ".", "-q", "--no-dev", *self.extra_args()]
         else:
-            cmd = ["npx", "depcheck", ".", "-q", "--no-dev", *self.extra_args()]
+            cmd = [*npx_command(), "depcheck", ".", "-q", "--no-dev", *self.extra_args()]
         out = subprocess.run(
             cmd, cwd=repo, capture_output=True, text=True, timeout=300
         )

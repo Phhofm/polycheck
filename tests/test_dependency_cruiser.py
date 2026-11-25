@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from polycheck.finding import Category, Severity
+from polycheck.tools.base import npx_command
 
 _CONFIG = '{"forbidden":[{"name":"no-circular","severity":"error","from":{},"to":{"circular":true}}]}'
 
@@ -68,8 +69,9 @@ def test_binary_is_depcruise_and_npx_fallback_uses_package_name(
 
     DependencyCruiserTool().run(tmp_path)
 
-    assert captured["cmd"][:2] == ["npx", "--yes"]
-    assert captured["cmd"][2] == "dependency-cruiser"  # not the placeholder
+    prefix = npx_command()
+    assert captured["cmd"][: len(prefix) + 1] == [*prefix, "--yes"]
+    assert captured["cmd"][len(prefix) + 1] == "dependency-cruiser"  # not the placeholder
     assert "--output-type" in captured["cmd"]
 
 

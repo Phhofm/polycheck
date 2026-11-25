@@ -208,3 +208,32 @@ def test_markdown_report_shows_metrics(tmp_path: Path):
     md = (tmp_path / "polycheck-report.md").read_text()
     assert "Scan metrics" in md
     assert "verbosity" in md
+
+
+# --- portable npx/npm spawning (0.3.8, windows CI finding) -------------------
+
+
+def test_npx_command_routes_through_cmd_exe_on_windows(monkeypatch):
+    """Windows: npm's shims are .cmd files CreateProcess cannot execute
+    directly (WinError 2 in the smoke test) — route through cmd.exe."""
+    import os
+
+    from polycheck.tools.base import npx_command
+
+    monkeypatch.setattr(os, "name", "nt")
+    assert npx_command() == ["cmd", "/c", "npx"]
+
+    monkeypatch.setattr(os, "name", "posix")
+    assert npx_command() == ["npx"]
+
+
+def test_npm_command_routes_through_cmd_exe_on_windows(monkeypatch):
+    import os
+
+    from polycheck.tools.base import npm_command
+
+    monkeypatch.setattr(os, "name", "nt")
+    assert npm_command() == ["cmd", "/c", "npm"]
+
+    monkeypatch.setattr(os, "name", "posix")
+    assert npm_command() == ["npm"]

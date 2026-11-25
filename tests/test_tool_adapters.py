@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from polycheck.finding import Category, Severity
+from polycheck.tools.base import npx_command
 from polycheck.tools.eslint import EslintTool
 from polycheck.tools.gitleaks import GitleaksTool
 from polycheck.tools.ruff import RuffTool
@@ -60,7 +61,7 @@ def test_eslint_falls_back_to_npx_with_eslint_arg(monkeypatch, tmp_path: Path):
     EslintTool().run(tmp_path)
 
     assert captured["cmd"] == [
-        "npx", "eslint", "--format=json", "--no-warn-ignored", "app.js",
+        *npx_command(), "eslint", "--format=json", "--no-warn-ignored", "app.js",
     ]
 
 
