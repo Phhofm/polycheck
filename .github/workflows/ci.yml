@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: [main, dev]
+    # Docs-only pushes skip the 9x3 test matrix entirely — before this
+    # filter, changelog/README/handover commits queued a full matrix per
+    # push (2026-11-25: ~20 runs stacked in the queue, several of them
+    # docs-only).
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+
+# Release commits are pushed to dev AND main — same SHA. Group by SHA so
+# the second push cancels the first and the matrix runs once per commit.
+concurrency:
+  group: ci-${{ github.sha }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
