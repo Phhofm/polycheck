@@ -244,17 +244,40 @@ def test_filter_by_baseline_none_is_identity():
 
 def test_actionlint_eligible_when_github_actions_detected(tmp_path: Path):
     """Regression: actionlint declared no languages, so the candidate
-    filter silently dropped it from every run (external live test)."""
-    from polycheck.registry import default_registry
+    filter silently dropped it from every run (external live test).
+
+    Hermetic (0.3.8, CI failure): the test used the real registry and
+    passed only where the actionlint BINARY is installed — CI runs it
+    on machines without actionlint. A stub mirroring the real
+    declaration (languages=["github-actions"]) tests the filter logic
+    without environment dependence."""
+    from polycheck.registry import ToolRegistry
     from polycheck.runner import Runner
+    from polycheck.tools.base import Tool
+
+    class _ActionlintStub(Tool):
+        name = "actionlint"
+        category = Category.LINT
+        languages = ["github-actions"]
+        installer = "github-release:rhysd/actionlint"
+
+        def is_applicable(self, repo):
+            return (repo / ".github" / "workflows").is_dir()
+
+        def is_installed(self):
+            return True
+
+        def run(self, repo):
+            return []
 
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "tests.yml").write_text("on: [push]\njobs: {}\n")
 
-    default_registry.discover()
-    runner = Runner(repo=tmp_path, config=Config(), registry=default_registry)
+    reg = ToolRegistry()
+    reg.register(_ActionlintStub)
+    runner = Runner(repo=tmp_path, config=Config(), registry=reg)
     applicable = {t.name for t in runner._applicable_tools()}
 
     assert "actionlint" in applicable
