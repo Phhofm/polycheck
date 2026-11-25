@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.7 (2026-11-25)
+
+Fixes from the first external live test (a full reviewer loop in
+another repo, scan trajectory 590 → 2):
+
+  * **Not-applicable tools are now visible in the run table.** A deep
+    run silently dropped installed tools whose config or dependency
+    manifest was absent (tach without `tach.toml`, pip-audit without a
+    manifest, dependency-cruiser without its config) — understanding
+    why required a doctor cross-check. The run now shows every such
+    tool as `not-applicable` with the adapter's reason (e.g.
+    "no dependency manifest (pyproject.toml, requirements.txt, …)").
+    Scan-coverage math excludes these rows.
+  * **`polycheck doctor --json` embeds a `skill` block** — pointer to
+    the `polycheck://setup` resource and the raw `polycheck-skill.md`
+    URL with an install hint, so any agent reaches the full usage guide
+    in one hop without a host-specific skill preinstalled.
+  * README documents that suppressing a **mitigated** finding via
+    `suppress:` is legitimate — persist the verdict with a comment
+    documenting the mitigation (context: semgrep inline suppression
+    does not stick for taint rules; `.polycheck.yml` suppress is the
+    reliable path).
+
 ## 0.3.6 (2026-11-25)
 
 The JS/TS structural adapter, a machine-readable readiness surface for
