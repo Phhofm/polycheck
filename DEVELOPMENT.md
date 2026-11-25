@@ -70,7 +70,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 226 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 228 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.7** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner
@@ -285,6 +285,23 @@ after, verdict, reason.
     `skill` block (pointer to polycheck://setup + the raw
     polycheck-skill.md URL) so an agent reaches the full guide in one
     hop without any host-specific skill installed. Verdict: KEPT.
+
+* **2026-11-25 — external live test #4 (Loop 2, 0.3.7, PyPI artifact
+  via pipx, deep profile).** All three 0.3.7 fixes validated in the
+  field: not-applicable rows with reasons (pip-audit, tach, deptry now
+  visible instead of vanished), the mitigated urllib finding suppressed
+  durably via `rule@file` with a mitigation comment (2 → 1 findings),
+  and the doctor skill block driving one-hop discovery. Two cosmetic
+  meta-findings from the same run, both fixed:
+  * **#9 — rich swallowed `[tool.tach]` in the not-applicable reason**
+    (rendered "no  in pyproject.toml" — the bracket token parsed as a
+    style tag; NOT markdown as first hypothesized). Fixed: cell content
+    escaped in the run summary table; repro pinned as a test.
+  * **#10 — deptry's not-applicable row carried an empty reason** while
+    the other manifest adapters explain themselves. Fixed: deptry now
+    states "no pyproject.toml".
+  Verdict: KEPT. The loop partner confirmed 0.3.7
+  release-worthy and consumes the scb-composites block next.
 
 * **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
   insight: polycheck is driven by LLMs, but the operational knowledge

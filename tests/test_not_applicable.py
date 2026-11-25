@@ -110,3 +110,39 @@ def test_run_table_shows_not_applicable_row(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "not-applicable" in result.output
     assert "no demo manifest" in result.output
+
+
+def test_bracket_tokens_survive_rich_markup_in_table(tmp_path: Path, monkeypatch):
+    """Loop-2 finding: rich swallowed `[tool.tach]` in the reason as a
+    style tag — the table rendered "no  in pyproject.toml". Cell content
+    must be escaped so bracket tokens reach the user verbatim."""
+    from typer.testing import CliRunner
+
+    from polycheck.cli import app
+
+    class _TachLike(_NotApplicableTool):
+        name = "needs-manifest"
+
+        def not_applicable_reason(self, repo):
+            return "no tach.toml (and no [tool.tach] in pyproject.toml)"
+
+    reg = ToolRegistry()
+    reg.register(_TachLike)
+    monkeypatch.setattr("polycheck.cli.default_registry", reg)
+
+    result = CliRunner().invoke(app, ["run", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    # The table may wrap the reason across lines; the discriminating
+    # fragment is the bracket token itself — rich used to swallow it.
+    assert "[tool.tach]" in result.output
+
+
+def test_deptry_states_why_it_is_not_applicable(tmp_path: Path):
+    """Loop-2 finding: deptry's not-applicable row carried an empty
+    reason while the other manifest adapters explain themselves."""
+    from polycheck.tools.deptry import DeptryTool
+
+    reason = DeptryTool().not_applicable_reason(tmp_path)
+    assert reason
+    assert "pyproject" in reason

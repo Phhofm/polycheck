@@ -37,6 +37,9 @@ class DeptryTool(Tool):
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "pyproject.toml").exists()
 
+    def not_applicable_reason(self, repo: Path) -> str | None:
+        return "no pyproject.toml"
+
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("deptry") is None:
             return []

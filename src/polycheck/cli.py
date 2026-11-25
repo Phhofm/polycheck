@@ -26,6 +26,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import __version__
@@ -314,9 +315,12 @@ def _print_summary(results: list, findings: list, written: list[Path]) -> None:
     by_tool.add_column("Time (s)", justify="right")
     by_tool.add_column("Message")
     for r in sorted(results, key=lambda r: r.tool):
+        # Escape cell content: adapter reasons may contain bracket
+        # tokens like [tool.tach], which rich would otherwise swallow
+        # as style markup (Loop-2 finding).
         by_tool.add_row(
-            r.tool, r.status, str(len(r.findings)), f"{r.duration_sec:.1f}",
-            r.message,
+            escape(r.tool), escape(r.status), escape(str(len(r.findings))),
+            escape(f"{r.duration_sec:.1f}"), escape(r.message),
         )
     console.print(by_tool)
     console.print(f"\n[bold]{len(findings)}[/bold] findings after filtering")
