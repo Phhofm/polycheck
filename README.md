@@ -414,6 +414,33 @@ Each finding has a stable schema:
 
 ---
 
+## Anti AI-slop metrics (built in, zero install)
+
+LLM-written code tends toward specific, measurable failure modes —
+polycheck ships an analyzer that measures them instead of arguing about
+taste. `scb-check` runs on every scan with no extra binary, derived from
+the [SlopCodeBench](https://www.scbench.ai) erosion model:
+
+| Metric | Category | What it catches |
+|--------|----------|-----------------|
+| Duplicated AST blocks | `duplication` | copy-paste-variant functions that drifted apart — the classic "the model rewrote the same helper twice" |
+| Slop patterns | `lint` | `range(len(x))` instead of `enumerate`, `dict.get(k, None)`, trivial pass-through wrappers — code that compiles, passes review, and is still worse |
+| Complexity-mass concentration | `complexity` | erosion: the share of total complexity piling up in single functions while file count grows |
+
+If you build with AI assistants (vibe coding), this is the report to
+read first: it quantifies the erosion an LLM leaves behind in a
+codebase that otherwise looks green — no failing tests, no type errors,
+and yet the same logic living in three places and one function carrying
+half the complexity.
+
+The slop-pattern rules are Python-specific today; duplication and
+erosion metrics are cross-language. Structural decay across *modules*
+(circular imports, boundary violations) is covered separately by the
+structural adapters (`tach` for Python, `dependency-cruiser` for
+JS/TS) in the deep profile.
+
+---
+
 ## Configuration
 
 Drop a `.polycheck.yml` (or `.polycheck.toml`) at the repo root:
@@ -488,6 +515,7 @@ the CI exit-code gate, so they never reappear in a later run.
 | JS / TS            | knip            | Unused files, exports, dependencies     |
 | JS / TS            | npm-audit       | CVE scan in dependencies                |
 | JS / TS            | depcheck        | Missing / unused dependencies           |
+| JS / TS            | dependency-cruiser | Module boundaries + circular deps (`.dependency-cruiser.*` config, deep profile) |
 | Universal          | gitleaks        | Secrets in the working tree             |
 | Universal          | scb-check       | AI-slop metrics: duplicated AST blocks, slop patterns (`range(len(x))`, `dict.get(k, None)`, trivial wrappers), and erosion (complexity-mass concentration) — the measurable DRY/KISS proxies, built for the [SlopCodeBench](https://www.scbench.ai) erosion model |
 | Universal          | semgrep         | Pattern-based security (multi-language) |

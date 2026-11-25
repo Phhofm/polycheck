@@ -33,6 +33,7 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "depcheck": 1,    # unused left-pad dependency
     "scb-check": 3,   # two slop patterns + one duplicated block
     "tach": 1,        # widgets/ imports app without declaring the dependency
+    "dependency-cruiser": 1,  # cycleA.js <-> cycleB.js, no-circular rule
 }
 
 
@@ -337,5 +338,25 @@ jobs:
         (widgets / "__init__.py").write_text("", encoding="utf-8")
         (widgets / "w1.py").write_text(
             "import app\n\ndef w() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+
+    if tool_name == "dependency-cruiser":
+        # dependency-cruiser seeds: a circular dependency between two
+        # CommonJS modules, flagged by the stock no-circular rule.
+        # Rules are user-defined, so the contract ships with the seed.
+        (repo / ".dependency-cruiser.json").write_text(
+            '{"forbidden":[{"name":"no-circular","severity":"error",'
+            '"from":{},"to":{"circular":true}}]}',
+            encoding="utf-8",
+        )
+        (repo / "cycleA.js").write_text(
+            'const { b } = require("./cycleB.js");\n'
+            "module.exports = { a: () => b() };\n",
+            encoding="utf-8",
+        )
+        (repo / "cycleB.js").write_text(
+            'const { a } = require("./cycleA.js");\n'
+            "module.exports = { b: () => a() };\n",
             encoding="utf-8",
         )

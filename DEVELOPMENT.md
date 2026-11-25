@@ -7,9 +7,11 @@ Single log for progress, decisions, and experiments. Task checklists live in
 ## Next session start here
 
 0.3.4 (profiles, tach, quality questions) and 0.3.5 (pr-scope gate-hole
-fix) shipped and released — see the 0.3.4/0.3.5 experiment entries below
-for evidence and the audit fixes. The 0.3.5 lesson is the headline: the
-post-release pipx E2E caught a gate hole the pre-release runs missed.
+fix) shipped and released. The next block (0.3.6, committed on dev —
+release pending Philip's go): **dependency-cruiser** as the JS/TS
+structural counterpart to tach, plus the README anti-AI-slop section.
+The 0.3.5 lesson is the headline: the post-release pipx E2E caught a
+gate hole the pre-release runs missed.
 
 Suggested next block (from the backlog, one per iteration, D1):
 
@@ -47,7 +49,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 202 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 210 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.5** (tagged this session; verify on PyPI after the
 publish workflow finishes). v0.3.0–v0.3.4 all released via Trusted
@@ -182,8 +184,39 @@ after, verdict, reason.
   no upstream means nothing has been pushed yet, so everything tracked is
   pushable and must be gated. The with-upstream path (merge-base + working
   tree) is unchanged. Verdict: KEPT. Process note: the fix could not ride
-  on v0.3.4 (already published) — new release 0.3.5 instead of rewriting
+  on v0.3.4 (already published) —   new release 0.3.5 instead of rewriting
   shared history.
+
+* **2026-11-25 — 0.3.6 work block: dependency-cruiser structural adapter
+  + README anti-AI-slop section.** What: (1) second structural adapter
+  **dependency-cruiser** (Category.ARCHITECTURE, `structural = True`,
+  languages js/ts) — shapes captured from real 18.9.0 output:
+  `summary.violations[]` with `{type, from, to, rule: {name, severity}}`,
+  cycle violations carry no line numbers (file = the `from` module);
+  severity error→MEDIUM, warn→LOW, info→INFO. CLI quirks pinned in the
+  adapter docstring and tests: the npm bin is `depcruise` but
+  `npx depcruise` resolves a placeholder package, so the npx fallback
+  must pass the package name `dependency-cruiser`; violations do NOT
+  change the exit code (exit 0 with findings) — parse, never trust;
+  `output.violations` is tolerated as a version-drift alias. Runs only
+  when a `.dependency-cruiser.*` config exists. Seeded expectation
+  `dependency-cruiser: 1` verified `ok` against the real binary via the
+  npx fallback (0.6 s); live deep-profile run on a scratch JS repo
+  produced `no-circular: a.js -> b.js (cycle)` (MEDIUM/architecture) and
+  exited 0. (2) Same-fix-class repair in **knip**: its `run()` already
+  fell back to `npx knip`, but base `is_installed()` only checked the
+  binary — the fallback was unreachable on machines without a global
+  install. Both adapters now report installed when npx is available.
+  (3) README gained the anti-AI-slop section (scb-check as the
+  measurable vibe-coding-quality argument) and the dependency-cruiser
+  matrix row. (4) mypy surfaced 9 latent mcp-SDK false positives when it
+  re-checked mcp_server.py (mcp 1.27 registers handlers via dynamic
+  decorators; the runtime is fine — all tests pass) — handled with a
+  documented `follow_imports = skip` override instead of line noise.
+  Also: `npm install -g dependency-cruiser` fails on this machine
+  (prefix /usr, needs root) — npx fallback covers it; sonarless was
+  live-audited earlier the same day and the container persists after
+  scans (`sonarless docker-clean` to remove it). Verdict: KEPT.
 
 * **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
   bigger-repo test.** Live-test feedback turned into features: (1) track
@@ -474,7 +507,10 @@ expectation required each (D1):**
 * ~~**import-linter or tach** (Python) — circular imports, layer
   violations, modularity~~ — done 2026-11-25: **tach** shipped (JSON
   output beat import-linter's human text; see the 0.3.4 experiment
-  entry). dependency-cruiser as the JS/TS counterpart is next.
+  entry).
+* ~~**dependency-cruiser** (JS/TS)~~ — done 2026-11-25 (0.3.6 block,
+  committed on dev): circular deps + path rules from
+  `depcruise --output-type json`; see the 0.3.6 experiment entry.
 * **interrogate** — docstring coverage per public symbol
   (documentation coverage, deterministic).
 * **ncu / `pip list --outdated`** — dependency drift and deprecation

@@ -39,6 +39,10 @@ class KnipTool(Tool):
     languages = ["javascript", "typescript"]
     installer = "npm:knip"
 
+    def is_installed(self) -> bool:
+        # Usable without a global install: run() falls back to npx knip.
+        return shutil.which("knip") is not None or shutil.which("npx") is not None
+
     def is_applicable(self, repo: Path) -> bool:
         return (repo / "package.json").exists()
 

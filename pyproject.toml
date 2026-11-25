@@ -94,6 +94,16 @@ no_implicit_optional = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 
+# The mcp SDK registers handlers via dynamic decorators
+# (@server.list_tools() etc.) and re-exports pydantic types — mypy
+# cannot model either, so it reports attr-defined/call-arg false
+# positives against code that runs fine (verified by the MCP test
+# suite). Skip its imports instead of sprinkling ignores over our
+# server module.
+[[tool.mypy.overrides]]
+module = "mcp.*"
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
