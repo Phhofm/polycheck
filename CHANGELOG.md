@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.3.10 (2026-11-25)
+## 0.3.11 (2026-11-25)
+
+  * **`ts-slop` gains `ts-any-annotation`** — flags `: any` type
+    annotations (parameters, variables) as slop. Found in the field:
+    an ionic-vue/nestjs codebase screenshot showed `function
+    openPDF(pdf: any)` — the untyped function signature is a stronger
+    erosion marker than an `as any` cast. Seeded expectation now 3.
+
 
 **`ts-slop` — polycheck's own TypeScript slop rule set** (first
 extension of the SlopCodeBench approach beyond Python):

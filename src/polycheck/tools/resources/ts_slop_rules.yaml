@@ -80,3 +80,13 @@ metadata:
 rule:
   kind: as_expression
   pattern: "$X as any"
+---
+id: ts-any-annotation
+language: ts
+severity: warning
+message: "`: any` annotation - type the parameter or use a real interface"
+metadata:
+  category: slop
+rule:
+  kind: type_annotation
+  regex: "any$"

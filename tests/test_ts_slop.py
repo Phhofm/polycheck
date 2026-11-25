@@ -163,7 +163,7 @@ def test_shipped_rules_file_exists_and_has_only_ts_rules():
     from polycheck.tools.ts_slop import _rules_path
 
     docs = list(yaml.safe_load_all(_rules_path().read_text(encoding="utf-8")))
-    assert len(docs) >= 8
+    assert len(docs) >= 9
     assert all(d["language"] == "ts" for d in docs)
     ids = {d["id"] for d in docs}
     assert {"ts-for-index", "ts-as-unknown-as", "ts-ignore-comment"} <= ids

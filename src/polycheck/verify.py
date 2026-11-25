@@ -34,7 +34,7 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "scb-check": 3,   # two slop patterns + one duplicated block
     "tach": 1,        # widgets/ imports app without declaring the dependency
     "dependency-cruiser": 1,  # cycleA.js <-> cycleB.js, no-circular rule
-    "ts-slop": 2,     # index-for-push + as-unknown-as in sloppy.ts
+    "ts-slop": 3,     # index-for-push + as-unknown-as + `: any` param in sloppy.ts
 }
 
 
@@ -363,14 +363,18 @@ jobs:
         )
 
     if tool_name == "ts-slop":
-        # ts-slop seeds: two of the shipped TypeScript slop patterns —
-        # an index for-loop pushing into a new array, and an
-        # `as unknown as` double cast.
+        # ts-slop seeds: three of the shipped TypeScript slop patterns —
+        # an index for-loop pushing into a new array, an
+        # `as unknown as` double cast, and an untyped `: any` parameter
+        # (the pattern LLM assistants leave in function signatures).
         (repo / "sloppy.ts").write_text(
             "const out: string[] = [];\n"
             "for (let i = 0; i < users.length; i++) {\n"
             "  out.push(users[i].name);\n"
             "}\n"
-            "const anyVal = data as unknown as string;\n",
+            "const anyVal = data as unknown as string;\n"
+            "function openPdf(pdf: any) {\n"
+            "  return pdf;\n"
+            "}\n",
             encoding="utf-8",
         )

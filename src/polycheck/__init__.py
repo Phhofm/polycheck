@@ -17,5 +17,5 @@ from __future__ import annotations
 
 # Keep in sync with pyproject.toml and CHANGELOG.md —
 # tests/test_meta.py enforces it.
-__version__ = "0.3.10"
+__version__ = "0.3.11"
 __all__ = ["__version__"]
