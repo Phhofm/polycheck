@@ -28,7 +28,7 @@ def test_handle_polycheck_writes_reports_and_session(tmp_path: Path, monkeypatch
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [finding], [result]
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -62,7 +62,7 @@ def test_handle_polycheck_partial_scan_needs_user_input(tmp_path: Path, monkeypa
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [], []
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -108,7 +108,7 @@ def test_handle_polycheck_returns_completed_when_no_findings_and_full_coverage(t
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [], []
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -143,7 +143,7 @@ def test_handle_polycheck_rejects_escaping_report_dir(tmp_path: Path, monkeypatc
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [], []
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -184,7 +184,7 @@ def test_audit_run_returns_dependency_context_and_json_resource(tmp_path: Path, 
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [finding], [result]
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -302,7 +302,7 @@ def test_handle_polycheck_emits_progress_phases(tmp_path: Path, monkeypatch):
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [finding], [result]
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -416,7 +416,7 @@ def test_diff_param_reports_only_new_findings(tmp_path: Path, monkeypatch):
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [finding, new_finding], [result]
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -461,7 +461,7 @@ def test_diff_param_without_baseline_reports_all_with_note(tmp_path: Path, monke
             self.repo = repo
             self.config = config
 
-        def run(self, parallel=False, tools=None):
+        def run(self, parallel=False, tools=None, profile=None):
             return [finding], [result]
 
     monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
@@ -497,3 +497,105 @@ def test_shared_workflow_steps_mention_baseline_and_suppress():
     assert "polycheck baseline" in _SHARED_STEPS
     assert "diff: true" in _SHARED_STEPS
     assert "suppress:" in _SHARED_STEPS
+
+
+# --- profiles (0.3.4) --------------------------------------------------------
+
+
+def test_workflow_tool_schema_offers_profile_param():
+    from polycheck.mcp_server import _build_tool_definitions
+    from polycheck.profiles import PROFILES
+
+    tools = {t.name: t for t in _build_tool_definitions()}
+    for name in ("polycheck.run", "polycheck.audit_run"):
+        props = tools[name].inputSchema["properties"]
+        assert sorted(props["profile"]["enum"]) == sorted(PROFILES), name
+
+
+def test_handle_polycheck_unknown_profile_is_error(tmp_path: Path):
+    from polycheck import mcp_server
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "profile": "turbo",
+    })
+    payload = json.loads(response[0].text)
+
+    assert "error" in payload
+    assert "unknown profile" in payload["error"]
+
+
+def test_handle_polycheck_pr_profile_scopes_to_changed_files(
+    tmp_path: Path, monkeypatch,
+):
+    import subprocess
+
+    from polycheck import mcp_server
+    from polycheck.finding import Category, Finding, Severity
+    from polycheck.runner import ToolResult
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "a.py"],
+        cwd=tmp_path, check=True,
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
+        cwd=tmp_path, check=True,
+    )
+    (tmp_path / "b.py").write_text("y = 2\n")
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "b.py"],
+        cwd=tmp_path, check=True,
+    )
+
+    def _mk(tool: str, rule: str, file: str) -> tuple[Finding, ToolResult]:
+        f = Finding(
+            tool=tool, rule=rule, severity=Severity.HIGH,
+            category=Category.LINT, message=rule, file=file, line=1,
+        )
+        return f, ToolResult(tool=tool, status="ok", findings=[f], duration_sec=0.1)
+
+    f_changed, r_changed = _mk("stub", "CHANGED", "b.py")
+    f_untouched, r_untouched = _mk("stub", "UNTOUCHED", "a.py")
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None, profile=None):
+            # The profile must reach the runner (tool selection preset).
+            assert profile is not None and profile.name == "pr"
+            return [f_changed, f_untouched], [r_changed, r_untouched]
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {"missing_tools": [], "missing_system_dependencies": []},
+    )
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "profile": "pr",
+        "parallel": False,
+    })
+    payload = json.loads(response[0].text)
+
+    assert payload["total_findings"] == 1
+    assert payload["by_tool"] == {"stub": 1}
+    assert payload["severity"] == "HIGH"  # pr preset: findings below HIGH are noise
+
+
+def test_handle_audit_run_unknown_profile_is_error(tmp_path: Path):
+    from polycheck import mcp_server
+
+    response = mcp_server._handle_audit_run({
+        "repo": str(tmp_path),
+        "profile": "turbo",
+    })
+    payload = json.loads(response[0].text)
+
+    assert "error" in payload

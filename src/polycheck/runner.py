@@ -26,6 +26,7 @@ from pathlib import Path
 from .config import Config
 from .detect import detect
 from .finding import Category, Finding, Severity
+from .profiles import ProfileSpec, is_skipped
 from .registry import ToolRegistry, default_registry
 from .tools.base import Tool, annotate_track_status
 
@@ -60,17 +61,21 @@ class Runner:
         self,
         parallel: bool = False,
         tools: Iterable[str] | None = None,
+        profile: ProfileSpec | None = None,
     ) -> tuple[list[Finding], list[ToolResult]]:
         """Run all applicable tools and return ``(findings, results)``.
 
         If ``tools`` is given, restrict to those tool names (after the
         enable/disable filter). Otherwise all applicable tools run.
 
+        If ``profile`` is given, it presets tool selection (``pr`` skips
+        heavy and structural adapters; ``deep`` keeps everything).
+
         If ``parallel`` is True, tools are run in a thread pool (one per
         tool). Tool subprocesses are independent; running in parallel is
         safe and roughly halves total wall time on a 4+ core machine.
         """
-        applicable = self._applicable_tools()
+        applicable = self._applicable_tools(profile)
         if tools is not None:
             wanted = set(tools)
             applicable = [c for c in applicable if c.name in wanted]
@@ -91,8 +96,8 @@ class Runner:
         annotate_track_status(self.repo, findings)
         return findings, results
 
-    def _applicable_tools(self) -> list[type[Tool]]:
-        """Filter registry → language-applicable → user enable/disable → installed."""
+    def _applicable_tools(self, profile: ProfileSpec | None = None) -> list[type[Tool]]:
+        """Filter registry → language-applicable → user enable/disable → profile → installed."""
         langs = detect(self.repo)
         lang_slugs = {lang.slug for lang in langs}
 
@@ -108,9 +113,11 @@ class Runner:
         # Apply enable/disable filters.
         candidates = self._apply_filters(candidates)
 
-        # Filter to installed + applicable.
+        # Filter to installed + applicable + profile-eligible.
         out: list[type] = []
         for cls in candidates:
+            if is_skipped(cls, profile):
+                continue
             inst = cls(config=self.config)
             if not inst.is_installed():
                 continue

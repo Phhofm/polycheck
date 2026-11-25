@@ -315,7 +315,9 @@ def test_init_git_hook_pre_push(tmp_path: Path, monkeypatch):
     import os
     assert os.access(hook, os.X_OK)
     content = hook.read_text(encoding="utf-8")
-    assert "polycheck run . --parallel --fail-on HIGH" in content
+    # 0.3.4: the hook gate runs the pr profile — fast tools, changed-file
+    # scope, HIGH gate — instead of a whole-repo HIGH scan.
+    assert "polycheck run . --parallel --profile pr" in content
     assert "exit 1" in content
 
 

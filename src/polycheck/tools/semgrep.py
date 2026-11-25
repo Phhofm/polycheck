@@ -68,6 +68,9 @@ class SemgrepTool(Tool):
         for r in data.get("results", []):
             extra = r.get("extra", {})
             severity = _SEVERITY_MAP.get(extra.get("severity", "WARNING"), Severity.MEDIUM)
+            # start/end live on the result object, not under `extra`
+            # (cross-model audit against real semgrep 1.x output, 0.3.4).
+            start = r.get("start", {}) or {}
             findings.append(
                 Finding(
                     tool=self.name,
@@ -76,8 +79,8 @@ class SemgrepTool(Tool):
                     category=Category.SECURITY,
                     message=extra.get("message", "").splitlines()[0] if extra.get("message") else "",
                     file=r.get("path"),
-                    line=extra.get("start", {}).get("line"),
-                    column=extra.get("start", {}).get("col"),
+                    line=start.get("line"),
+                    column=start.get("col"),
                     fixable=bool(extra.get("fix")),
                     fix_command=None,
                     doc_url=r.get("check_id"),

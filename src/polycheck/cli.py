@@ -39,6 +39,14 @@ from .initializer import (
     format_action,
     normalize_hosts,
 )
+from .profiles import (
+    ProfileError,
+    changed_files,
+    effective_fail_on,
+    filter_by_scope,
+    is_skipped,
+    resolve_profile,
+)
 from .registry import default_registry
 from .reporters import render as render_report
 from .runner import (
@@ -116,12 +124,26 @@ def run(
         help="Auto-install any missing analyzers before running",
     ),
     fail_on: str = typer.Option(
-        "MEDIUM",
+        None,
         "--fail-on",
-        help="Exit non-zero if any finding is at or above this severity (INFO, LOW, MEDIUM, HIGH, CRITICAL). Default MEDIUM.",
+        help="Exit non-zero if any finding is at or above this severity "
+        "(INFO, LOW, MEDIUM, HIGH, CRITICAL). Default: MEDIUM — HIGH with "
+        "--profile pr, no gate with --profile deep.",
+    ),
+    profile: str = typer.Option(
+        None,
+        "--profile",
+        help="Scan preset: 'pr' (fast tools, changed-file scope, HIGH gate) "
+        "or 'deep' (all tools incl. heavy ones, no gate). Default: full "
+        "scan with the MEDIUM gate.",
     ),
 ) -> None:
     """Run all applicable tools and write reports."""
+    try:
+        profile_spec = resolve_profile(profile)
+    except ProfileError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from exc
     cfg = _load_config(config, path, severity, output, report_dir)
     repo = path.resolve()
     console.print(f"[bold]polycheck[/bold] {__version__} — {repo}")
@@ -132,12 +154,16 @@ def run(
         _auto_install_missing(only=tool or None, repo=repo)
 
     runner = Runner(repo=repo, config=cfg, registry=default_registry)
-    findings, results = runner.run(parallel=parallel, tools=tool or None)
+    findings, results = runner.run(parallel=parallel, tools=tool or None,
+                                   profile=profile_spec)
 
     if not no_dedupe:
         findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
     findings = apply_suppressions(findings, cfg.suppress)
+
+    if profile_spec and profile_spec.scoped_to_changes:
+        findings = _apply_change_scope(profile_spec, repo, findings)
 
     if diff:
         findings = _apply_diff_baseline(cfg, repo, findings)
@@ -150,10 +176,27 @@ def run(
         _print_failures(failed)
 
     not_run = _missing_tools(repo, only=tool or None, exclude={r.tool for r in results})
+    not_run = [cls for cls in not_run if not is_skipped(cls, profile_spec)]
     if not_run:
         _print_missing(not_run)
 
-    raise typer.Exit(code=_exit_code(findings, fail_on.upper()))
+    gate = effective_fail_on(profile_spec, fail_on)
+    raise typer.Exit(code=_exit_code(findings, gate))
+
+
+def _apply_change_scope(profile_spec, repo: Path, findings: list) -> list:
+    """pr profile: findings in files that did not change are out of scope."""
+    changed = changed_files(repo)
+    if changed is None:
+        console.print(
+            f"[red]--profile {profile_spec.name} requires a git repository.[/red]"
+        )
+        raise typer.Exit(code=2)
+    console.print(
+        f"[cyan]--profile {profile_spec.name}:[/cyan] "
+        f"{len(changed)} changed tracked file(s) in scope"
+    )
+    return filter_by_scope(findings, changed)
 
 
 def _apply_diff_baseline(cfg: Config, repo: Path, findings: list) -> list:
@@ -808,13 +851,16 @@ def _tool_applicable(cls: type[Tool], repo: Path) -> bool:
         return True
 
 
-def _exit_code(findings: list[Finding], fail_on: str) -> int:
+def _exit_code(findings: list[Finding], fail_on: str | None) -> int:
     """Return 0 if all findings are below ``fail_on``; 1 otherwise.
 
-    The default is MEDIUM, so LOW and INFO findings don't fail the build.
+    ``None`` means "no gate" (--profile deep) — always exit 0. The
+    default is MEDIUM, so LOW and INFO findings don't fail the build.
     Findings in gitignored files are excluded from the gate — they cannot
     reach the repo via push (0.3.3; the buckets stay visible in reports).
     """
+    if fail_on is None:
+        return 0
     gated = [f for f in findings if f.track != "ignored"]
     if not gated:
         return 0

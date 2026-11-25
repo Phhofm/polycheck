@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from ..finding import Category, Finding, Severity
@@ -39,13 +40,18 @@ class PipAuditTool(Tool):
         if shutil.which("pip-audit") is None:
             return []
 
-        cmd = self._build_command(repo)
-        if cmd is None:
-            return []
+        # The temp requirements file (pyproject fallback) lives outside
+        # the repo and is removed after the run — writing it into the
+        # repo polluted the tree (cross-model audit, 0.3.4) and left it
+        # for gitleaks to scan on the next run.
+        with tempfile.TemporaryDirectory(prefix="polycheck-pip-audit-") as tmp_name:
+            cmd = self._build_command(repo, Path(tmp_name))
+            if cmd is None:
+                return []
 
-        out = subprocess.run(
-            cmd, cwd=repo, capture_output=True, text=True, timeout=300
-        )
+            out = subprocess.run(
+                cmd, cwd=repo, capture_output=True, text=True, timeout=300
+            )
         if not out.stdout.strip():
             return []
 
@@ -56,7 +62,7 @@ class PipAuditTool(Tool):
 
         return self._parse_findings(data)
 
-    def _build_command(self, repo: Path) -> list[str] | None:
+    def _build_command(self, repo: Path, tmp_dir: Path) -> list[str] | None:
         """Build the pip-audit command."""
         if (repo / _REQUIREMENTS_TXT).exists():
             return ["pip-audit", "-r", _REQUIREMENTS_TXT, "--format", "json", "--no-deps"]
@@ -65,12 +71,17 @@ class PipAuditTool(Tool):
         if not reqs:
             return None
 
-        tmp = repo / ".polycheck-pip-audit-reqs.txt"
+        tmp = tmp_dir / "requirements.txt"
         tmp.write_text("\n".join(reqs), encoding="utf-8")
-        return ["pip-audit", "-r", str(tmp.name), "--format", "json", "--no-deps"]
+        return ["pip-audit", "-r", str(tmp), "--format", "json", "--no-deps"]
 
     def _parse_findings(self, data: dict) -> list[Finding]:
         """Parse pip-audit JSON output into Finding objects."""
+        # A non-dict payload (empty list, envelope change) parses as no
+        # findings — pip-audit's documented shape is an object with
+        # "dependencies", but the parser must not crash on anything else.
+        if not isinstance(data, dict):
+            return []
         findings: list[Finding] = []
         for dep in data.get("dependencies", []):
             seen_ids: set[str] = set()

@@ -97,6 +97,59 @@ def test_runner_picks_up_stub(tmp_path: Path):
     assert results[0].tool == "stub"
 
 
+def test_runner_profile_skips_heavy_and_structural(tmp_path: Path):
+    """pr = fast tools only: heavy and structural adapters stay out;
+    deep and the default scan keep them."""
+    from polycheck.profiles import resolve_profile
+    from polycheck.registry import ToolRegistry
+    from polycheck.runner import Runner
+
+    class _Heavy(Tool):
+        name = "pip-audit"
+        category = Category.CVE
+        languages = []
+        universal = True
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return True
+
+        def run(self, repo):
+            return []
+
+    class _Structural(Tool):
+        name = "tach"
+        category = Category.ARCHITECTURE
+        languages = []
+        universal = True
+        structural = True
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return True
+
+        def run(self, repo):
+            return []
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    reg = ToolRegistry()
+    reg.register(_Heavy)
+    reg.register(_Structural)
+
+    runner = Runner(repo=tmp_path, config=Config(), registry=reg)
+    names = lambda results: sorted(r.tool for r in results)  # noqa: E731
+
+    assert names(runner.run(profile=resolve_profile("pr"))[1]) == []
+    assert names(runner.run(profile=resolve_profile("deep"))[1]) == [
+        "pip-audit", "tach",
+    ]
+    assert names(runner.run()[1]) == ["pip-audit", "tach"]  # default unchanged
+
+
 def test_runner_marks_errors(tmp_path: Path):
     class _Boom(Tool):
         name = "boom"

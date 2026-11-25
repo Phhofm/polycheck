@@ -70,3 +70,28 @@ def test_agent_template_has_action_quality_rules():
         assert "applicability" in body, f"{name}: no applicability-condition rule"
         assert "cited lines" in body, f"{name}: no read-cited-lines rule"
         assert "Coverage gaps" in body, f"{name}: return format lacks coverage line"
+
+
+def test_workflow_templates_mention_profile_modes():
+    """0.3.4: /polycheck gains a mode argument — default dev scan,
+    deep on onboarding, pr for pre-push gates."""
+    from polycheck.workflows import _SHARED_STEPS
+
+    assert "profile" in _SHARED_STEPS
+    assert "deep" in _SHARED_STEPS
+    assert "pr" in _SHARED_STEPS
+
+
+def test_agent_templates_carry_quality_questions_section():
+    """The deep profile adds questions the static tools cannot answer —
+    as checklist QUESTIONS, never fabricated findings."""
+    from polycheck.workflows import AGENT_TEMPLATES
+
+    anchors = ("Quality questions", "SRP", "Law of Demeter", "deep profile")
+    for name, template in AGENT_TEMPLATES.items():
+        body = template.content
+        for anchor in anchors:
+            assert anchor in body, f"{name}: missing '{anchor}'"
+        assert "never" in body and "findings" in body, (
+            f"{name}: quality questions must not become fabricated findings"
+        )

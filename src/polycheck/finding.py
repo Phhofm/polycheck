@@ -52,6 +52,7 @@ class Category(enum.Enum):
 
     LINT = "lint"
     TYPE = "type"
+    ARCHITECTURE = "architecture"
     SECURITY = "security"
     SECRETS = "secrets"
     DEAD_CODE = "dead-code"

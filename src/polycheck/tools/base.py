@@ -178,6 +178,11 @@ class Tool(abc.ABC):
     #: When True, the tool runs on every repo regardless of language.
     universal: bool = False
 
+    #: Structural adapters (architecture contracts, module boundaries)
+    #: are deep-profile tools: fast, but only meaningful when the user
+    #: opted in via their config file, and out of the pr fast path.
+    structural: bool = False
+
     #: How to install the tool. One of:
     #:   * ``"pipx:<package>"`` — ``pipx install <package>``
     #:   * ``"pip:<package>"``   — ``pip install --user <package>``

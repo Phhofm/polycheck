@@ -39,6 +39,14 @@ from mcp.types import TextContent
 
 from .config import Config
 from .finding import Category, Finding, Severity
+from .profiles import (
+    ProfileError,
+    ProfileSpec,
+    changed_files,
+    default_severity,
+    filter_by_scope,
+    resolve_profile,
+)
 from .registry import default_registry
 from .reporters import render as render_report
 from .runner import (
@@ -294,6 +302,14 @@ def _workflow_tool(name: str):
                     "baseline (created by running polycheck with diff off and "
                     "saving it via `polycheck baseline`). Default: false.",
                 },
+                "profile": {
+                    "type": "string",
+                    "enum": ["pr", "deep"],
+                    "description": "Scan preset. 'pr': fast tools only, findings "
+                    "scoped to changed tracked files, HIGH severity floor. "
+                    "'deep': every tool including heavy ones — use for project "
+                    "onboarding. Default: full scan, MEDIUM floor.",
+                },
                 "parallel": {
                     "type": "boolean",
                     "description": "Run tools concurrently. Default: true.",
@@ -336,6 +352,12 @@ def _build_tool_definitions():
                     "severity": {
                         "type": "string",
                         "enum": ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                    },
+                    "profile": {
+                        "type": "string",
+                        "enum": ["pr", "deep"],
+                        "description": "Scan preset: 'pr' (fast tools, changed-file "
+                        "scope) or 'deep' (everything). Default: full scan.",
                     },
                 },
                 "required": ["repo"],
@@ -428,11 +450,35 @@ def _guided_report_dir(repo: Path, configured: str, run_id: str) -> Path | list:
     return out_dir
 
 
+def _resolve_profile_or_error(arguments: dict) -> ProfileSpec | None | list:
+    """Resolve the profile argument; a list payload signals an error."""
+    try:
+        return resolve_profile(arguments.get("profile"))
+    except ProfileError as exc:
+        return _text_content({"error": str(exc)})
+
+
+def _apply_change_scope(
+    spec, repo: Path, findings: list
+) -> tuple[list, dict | None]:
+    """pr-style scoping; a non-None error payload signals failure."""
+    changed = changed_files(repo)
+    if changed is None:
+        return findings, {
+            "error": f"--profile {spec.name} requires a git repository",
+        }
+    return filter_by_scope(findings, changed), None
+
+
 def _handle_audit_run(arguments: dict) -> list:
     """Run the scan primitive and return report paths plus context."""
     repo = _repo_from_arguments(arguments)
     if isinstance(repo, list):
         return repo
+
+    profile_spec = _resolve_profile_or_error(arguments)
+    if isinstance(profile_spec, list):
+        return profile_spec
 
     cfg = Config.load(repo)
     severity = arguments.get("severity", "MEDIUM").upper()
@@ -444,9 +490,14 @@ def _handle_audit_run(arguments: dict) -> list:
     findings, results = runner.run(
         parallel=bool(arguments.get("parallel", True)),
         tools=arguments.get("tools"),
+        profile=profile_spec,
     )
     findings = dedupe(findings)
     findings = filter_by_severity(findings, severity)
+    if profile_spec and profile_spec.scoped_to_changes:
+        findings, scope_error = _apply_change_scope(profile_spec, repo, findings)
+        if scope_error:
+            return _text_content(scope_error)
 
     report_dir = _validate_report_dir(repo, cfg.output.report_dir)
     if isinstance(report_dir, list):
@@ -508,9 +559,15 @@ def _handle_polycheck(arguments: dict, progress: Callable[[float, str | None], N
     if isinstance(repo, list):
         return repo
 
+    profile_spec = _resolve_profile_or_error(arguments)
+    if isinstance(profile_spec, list):
+        return profile_spec
+
     run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     cfg = Config.load(repo)
-    severity = arguments.get("severity", "MEDIUM").upper()
+    severity = arguments.get(
+        "severity", default_severity(profile_spec)
+    ).upper()
     install_mode = arguments.get("install_mode", "none")
     if install_mode not in {"none", "tools_only"}:
         return _text_content({"error": "install_mode must be none or tools_only"})
@@ -541,10 +598,15 @@ def _handle_polycheck(arguments: dict, progress: Callable[[float, str | None], N
     findings, results = runner.run(
         parallel=bool(arguments.get("parallel", True)),
         tools=arguments.get("tools"),
+        profile=profile_spec,
     )
     findings = dedupe(findings)
     findings = filter_by_severity(findings, cfg.severity_threshold)
     findings = apply_suppressions(findings, cfg.suppress)
+    if profile_spec and profile_spec.scoped_to_changes:
+        findings, scope_error = _apply_change_scope(profile_spec, repo, findings)
+        if scope_error:
+            return _text_content(scope_error)
     append_event(repo, run_id, {"event": "scan_finished", "total_findings": len(findings)})
     if progress:
         progress(0.7, "scan finished")

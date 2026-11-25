@@ -32,6 +32,7 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "actionlint": 1,  # unknown "runz:" key in ci.yml
     "depcheck": 1,    # unused left-pad dependency
     "scb-check": 3,   # two slop patterns + one duplicated block
+    "tach": 1,        # widgets/ imports app without declaring the dependency
 }
 
 
@@ -311,5 +312,30 @@ jobs:
         # generic-api-key rule actually flags.
         (repo / "secret.txt").write_text(
             "aws_key = AKIAQW7YJ2KX9P3M4NB8\n",
+            encoding="utf-8",
+        )
+
+    if tool_name == "tach":
+        # tach seeds: a module boundary violation — widgets imports app
+        # but declares no dependency on it. tach only reports violations
+        # the user's tach.toml defines, so the contract ships with the seed.
+        (repo / "tach.toml").write_text(
+            "forbid_circular_dependencies = true\n"
+            'source_roots = ["."]\n'
+            "\n"
+            "[[modules]]\n"
+            'path = "app"\n'
+            "depends_on = []\n"
+            "\n"
+            "[[modules]]\n"
+            'path = "widgets"\n'
+            "depends_on = []\n",
+            encoding="utf-8",
+        )
+        widgets = repo / "widgets"
+        widgets.mkdir(parents=True, exist_ok=True)
+        (widgets / "__init__.py").write_text("", encoding="utf-8")
+        (widgets / "w1.py").write_text(
+            "import app\n\ndef w() -> int:\n    return 1\n",
             encoding="utf-8",
         )

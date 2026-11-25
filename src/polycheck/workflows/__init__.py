@@ -21,16 +21,17 @@ _SHARED_STEPS = """
 Run the Polycheck guided static analysis workflow for the current repository.
 
 1. Confirm the current repository root.
-2. Call the MCP tool `polycheck.run` with `repo` set to the current repository root, `severity` set to `MEDIUM`, `parallel` set to `true`, and `install_mode` set to `none`.
-3. If the response reports missing analyzers or system dependencies, ask the user before rerunning with `install_mode` set to `tools_only` and `install_confirmed` set to `true`.
-4. Read the returned markdown and JSON report paths.
-5. Summarize findings by severity and tool.
-6. If fixable findings exist, ask the user before applying fixes.
-7. After fixes, rerun `polycheck.run` to verify the result.
-8. When the user accepts the current state, suggest `polycheck baseline` so later `polycheck.run` calls with `diff: true` report only new findings.
-9. For FALSE POSITIVE verdicts, append the rule (or `rule@file`) to the `suppress:` list in `.polycheck.yml` so the verdict persists across runs.
-10. If a `polycheck-reviewer` subagent is available in this host, prefer delegating the full triage to it — it runs polycheck, triages, writes `polycheck-reports/polycheck-review-checklist.md`, and returns only a compact summary, keeping this chat clean. Then walk the checklist items with the user here.
-11. If the MCP tool is unavailable, run `polycheck run . --severity MEDIUM`, read `polycheck-reports/polycheck-report.md` and `polycheck-reports/polycheck-report.json`, and perform the same triage.
+2. Confirm the scan mode: the default is the dev scan. Use `profile: "pr"` for a pre-push/PR gate (fast tools, findings scoped to changed tracked files), and `profile: "deep"` when the user asks for a first full pass or onboarding audit (every tool including heavy ones; output feeds triage and `polycheck baseline`).
+3. Call the MCP tool `polycheck.run` with `repo` set to the current repository root, `severity` set to `MEDIUM`, `parallel` set to `true`, and `install_mode` set to `none`.
+4. If the response reports missing analyzers or system dependencies, ask the user before rerunning with `install_mode` set to `tools_only` and `install_confirmed` set to `true`.
+5. Read the returned markdown and JSON report paths.
+6. Summarize findings by severity and tool.
+7. If fixable findings exist, ask the user before applying fixes.
+8. After fixes, rerun `polycheck.run` to verify the result.
+9. When the user accepts the current state, suggest `polycheck baseline` so later `polycheck.run` calls with `diff: true` report only new findings.
+10. For FALSE POSITIVE verdicts, append the rule (or `rule@file`) to the `suppress:` list in `.polycheck.yml` so the verdict persists across runs.
+11. If a `polycheck-reviewer` subagent is available in this host, prefer delegating the full triage to it — it runs polycheck, triages, writes `polycheck-reports/polycheck-review-checklist.md`, and returns only a compact summary, keeping this chat clean. Then walk the checklist items with the user here.
+12. If the MCP tool is unavailable, run `polycheck run . --severity MEDIUM`, read `polycheck-reports/polycheck-report.md` and `polycheck-reports/polycheck-report.json`, and perform the same triage.
 
 Keep the final answer short and actionable.
 """.strip()
@@ -95,8 +96,16 @@ ranked, actionable checklist — nothing else. You do not fix code; you review.
 1. Find the repository root (git root of the current workspace).
 2. Run the scan with Bash:
 
-       polycheck run . --parallel
+        polycheck run . --parallel
 
+   For a deep review (onboarding, first full pass, or when the user
+   asks for one) run the deep profile instead:
+
+        polycheck run . --parallel --profile deep
+
+   It includes the heavy tools and structural checks; expect a longer
+   run. For a pre-push gate use `--profile pr` — fast tools, scoped to
+   changed tracked files.
    If `polycheck` is not on PATH, report exactly that and stop — do not
    try to install anything.
 3. Read `polycheck-reports/polycheck-report.md` for the findings and
@@ -177,6 +186,29 @@ user asks for those, say so instead of inventing findings.
   mitigation.
 - SECRETS: rotate the credential immediately, scrub history, then
   allowlist only after rotation.
+
+## Quality questions (deep profile)
+
+When the scan ran with `--profile deep` — or the user asks for a deep
+review — add a final "Quality questions" section to the checklist.
+These are principles static analyzers cannot measure. They become open
+QUESTIONS for the user, never findings and never verdicts — do not
+invent tool-like entries for them:
+
+- SRP (single responsibility): does each changed module do exactly one
+  job? Name the module.
+- SOLID: is a concrete dependency leaking where an abstraction belongs?
+- Law of Demeter: does code reach through strangers (a.b.c.d chains)?
+- Meaningful names: which name needs a comment to explain itself?
+- Comments explain why, not what: which comment merely narrates code?
+- Design patterns: is ad-hoc code re-inventing a known pattern?
+- Observability: would a failure here be diagnosable from logs alone?
+- Scalability: which loop or query grows with the data, not the code?
+
+Each question: one line, the file or module it is about, one clause of
+why. If the answer is already visible in the cited lines, state it
+instead of asking. Questions never change the severity totals — they
+are not findings, so the counts in your return format stay untouched.
 
 ## Return format (your reply to the caller)
 

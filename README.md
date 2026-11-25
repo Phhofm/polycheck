@@ -198,6 +198,8 @@ polycheck run . --severity MEDIUM          # drop INFO / LOW findings
 polycheck run . --fail-on HIGH             # exit 1 if any HIGH/CRITICAL (CI)
 polycheck run . --install                  # install missing tools, then run
 polycheck run . --parallel                 # run tools concurrently
+polycheck run . --profile pr               # fast tools, changed-file scope, HIGH gate
+polycheck run . --profile deep             # every tool incl. heavy ones, no gate
 polycheck run . --output markdown          # markdown only (no JSON / sarif)
 polycheck baseline .                       # snapshot current findings
 polycheck run . --diff                     # only findings NEW since the baseline
@@ -219,6 +221,22 @@ polycheck mcp                              # start the MCP server
 
 `polycheck run` exits with code **1** if any finding is at or above
 `--fail-on` (default `MEDIUM`). Use `--fail-on HIGH` in CI.
+
+### Scan profiles
+
+Profiles are presets over the existing primitives — tool selection,
+scoping, and the gate. The default scan stays what it was:
+
+| Profile | Tools | Scope | Gate |
+|---------|-------|-------|------|
+| *(default)* | all installed + applicable, fast pass | whole repo | MEDIUM |
+| `--profile pr` | fast tools only (no Docker/network-heavy, no structural) | changed tracked files (git diff vs HEAD / merge-base) | HIGH |
+| `--profile deep` | everything, incl. sonarless/semgrep/pip-audit/npm-audit and structural adapters | whole repo | none — the report feeds triage, then `polycheck baseline` |
+
+`pr` is for pre-push/PR gates: findings in files that did not change are
+out of scope, and a baseline (`--diff`) can further filter known ones.
+`deep` is for onboarding and periodic full passes. The pre-push hook
+installed by `polycheck init --git-hook pre-push` runs `--profile pr`.
 
 ### Verifying every supported analyzer
 
@@ -310,10 +328,10 @@ polycheck init --scope project --git-hook pre-push
 ```
 
 This installs a `.git/hooks/pre-push` gate that runs
-`polycheck run . --parallel --fail-on HIGH` and blocks the push on HIGH+
-findings (it never overwrites an existing hook). Triage or suppress, then
-push. Pair it with `polycheck baseline` + `run --diff` so the gate only
-judges what changed.
+`polycheck run . --parallel --profile pr` and blocks the push on HIGH+
+findings in the changed tracked files (it never overwrites an existing
+hook). Triage or suppress, then push. Pair it with `polycheck baseline`
++ `run --diff` so the gate only judges what changed.
 
 ### The Triage Prompt
 
@@ -464,6 +482,7 @@ the CI exit-code gate, so they never reappear in a later run.
 | Python             | vulture         | Dead code (with whitelist support)      |
 | Python             | pip-audit       | CVE scan in dependencies                |
 | Python             | deptry          | Missing / unused dependencies           |
+| Python             | tach            | Module boundaries + circular imports (`tach.toml`, deep profile) |
 | JS / TS            | eslint          | Linter (ESLint v9 flat config + legacy) |
 | JS / TS            | tsc             | TypeScript type checker                 |
 | JS / TS            | knip            | Unused files, exports, dependencies     |
