@@ -82,6 +82,16 @@ def test_workflow_templates_mention_profile_modes():
     assert "pr" in _SHARED_STEPS
 
 
+def test_workflow_templates_mention_readiness_preflight():
+    """0.3.6: before the first deep run, the agent checks readiness and
+    proposes prerequisites — sonarless needs Docker, and polycheck never
+    installs Docker or pipes remote scripts itself."""
+    from polycheck.workflows import _SHARED_STEPS
+
+    assert "doctor --json" in _SHARED_STEPS
+    assert "Docker" in _SHARED_STEPS and "sonarless" in _SHARED_STEPS
+
+
 def test_agent_templates_carry_quality_questions_section():
     """The deep profile adds questions the static tools cannot answer —
     as checklist QUESTIONS, never fabricated findings."""

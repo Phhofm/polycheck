@@ -49,7 +49,7 @@ pipx-installed.
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 210 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 221 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
 Latest release: **0.3.5** (tagged this session; verify on PyPI after the
 publish workflow finishes). v0.3.0–v0.3.4 all released via Trusted
@@ -217,6 +217,27 @@ after, verdict, reason.
   (prefix /usr, needs root) — npx fallback covers it; sonarless was
   live-audited earlier the same day and the container persists after
   scans (`sonarless docker-clean` to remove it). Verdict: KEPT.
+
+* **2026-11-25 — 0.3.6 (second commit): LLM readiness surface.** Philip's
+  insight: polycheck is driven by LLMs, but the operational knowledge
+  (sonarless needs Docker, the SonarQube server runs in a container the
+  sonarless CLI manages, deep = full power, install policy) was spread
+  across README/workflows/doctor-table text the agent never reads
+  structurally. What: (1) new `readiness.py` — single source for
+  `polycheck doctor --json` (machine-readable: tools with
+  installed/version/hint/auto_installable/profile-participation, Docker
+  prerequisite with `needed_for: [sonarless]`, profile guidance, and the
+  install policy incl. the never-curl|bash rule) and for the MCP server;
+  (2) MCP resource `polycheck://setup` (LLM setup/ops guide; zero
+  tool-count cost — the two-tool surface stays slim per D2);
+  (3) `profile_guidance` block in both scan responses so agents learn
+  the modes even without reading the resource; (4) `/polycheck` workflow
+  step: readiness preflight before the FIRST deep run — propose Docker +
+  sonarless to the user, never auto-install either. Verified live:
+  `doctor --json` on this machine reports 16/19 installed, docker
+  installed, sonarless/tach profiles `[default, deep]` (correctly absent
+  from pr). Also deduped `_check_docker` → `readiness.docker_status`.
+  Verdict: KEPT.
 
 * **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
   bigger-repo test.** Live-test feedback turned into features: (1) track

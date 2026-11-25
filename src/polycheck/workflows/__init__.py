@@ -22,16 +22,17 @@ Run the Polycheck guided static analysis workflow for the current repository.
 
 1. Confirm the current repository root.
 2. Confirm the scan mode: the default is the dev scan. Use `profile: "pr"` for a pre-push/PR gate (fast tools, findings scoped to changed tracked files), and `profile: "deep"` when the user asks for a first full pass or onboarding audit (every tool including heavy ones; output feeds triage and `polycheck baseline`).
-3. Call the MCP tool `polycheck.run` with `repo` set to the current repository root, `severity` set to `MEDIUM`, `parallel` set to `true`, and `install_mode` set to `none`.
-4. If the response reports missing analyzers or system dependencies, ask the user before rerunning with `install_mode` set to `tools_only` and `install_confirmed` set to `true`.
-5. Read the returned markdown and JSON report paths.
-6. Summarize findings by severity and tool.
-7. If fixable findings exist, ask the user before applying fixes.
-8. After fixes, rerun `polycheck.run` to verify the result.
-9. When the user accepts the current state, suggest `polycheck baseline` so later `polycheck.run` calls with `diff: true` report only new findings.
-10. For FALSE POSITIVE verdicts, append the rule (or `rule@file`) to the `suppress:` list in `.polycheck.yml` so the verdict persists across runs.
-11. If a `polycheck-reviewer` subagent is available in this host, prefer delegating the full triage to it — it runs polycheck, triages, writes `polycheck-reports/polycheck-review-checklist.md`, and returns only a compact summary, keeping this chat clean. Then walk the checklist items with the user here.
-12. If the MCP tool is unavailable, run `polycheck run . --severity MEDIUM`, read `polycheck-reports/polycheck-report.md` and `polycheck-reports/polycheck-report.json`, and perform the same triage.
+3. Before the FIRST deep run (onboarding), check readiness — `polycheck doctor --json` — and propose missing prerequisites to the user: sonarless (SonarQube engine, runs in a Docker container that the sonarless CLI manages) needs Docker plus the sonarless binary, which is a manual install by design. polycheck never installs Docker itself and never pipes remote scripts into a shell — the user runs those installs consciously. A scan without sonarless stays useful; offer `polycheck install` for the pipx/npm analyzers instead.
+4. Call the MCP tool `polycheck.run` with `repo` set to the current repository root, `severity` set to `MEDIUM`, `parallel` set to `true`, and `install_mode` set to `none`.
+5. If the response reports missing analyzers or system dependencies, ask the user before rerunning with `install_mode` set to `tools_only` and `install_confirmed` set to `true`.
+6. Read the returned markdown and JSON report paths.
+7. Summarize findings by severity and tool.
+8. If fixable findings exist, ask the user before applying fixes.
+9. After fixes, rerun `polycheck.run` to verify the result.
+10. When the user accepts the current state, suggest `polycheck baseline` so later `polycheck.run` calls with `diff: true` report only new findings.
+11. For FALSE POSITIVE verdicts, append the rule (or `rule@file`) to the `suppress:` list in `.polycheck.yml` so the verdict persists across runs.
+12. If a `polycheck-reviewer` subagent is available in this host, prefer delegating the full triage to it — it runs polycheck, triages, writes `polycheck-reports/polycheck-review-checklist.md`, and returns only a compact summary, keeping this chat clean. Then walk the checklist items with the user here.
+13. If the MCP tool is unavailable, run `polycheck run . --severity MEDIUM`, read `polycheck-reports/polycheck-report.md` and `polycheck-reports/polycheck-report.json`, and perform the same triage.
 
 Keep the final answer short and actionable.
 """.strip()

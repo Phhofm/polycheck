@@ -243,6 +243,14 @@ def run_server() -> None:
                 description="The latest guided workflow summary.",
                 mimeType="text/markdown",
             ),
+            Resource(
+                uri=AnyUrl("polycheck://setup"),
+                name="LLM setup guide",
+                description="Setup and operations guide for LLM coding "
+                "assistants: profiles, prerequisites (Docker for "
+                "sonarless), install policy.",
+                mimeType="text/markdown",
+            ),
         ]
 
     @server.read_resource()
@@ -395,6 +403,10 @@ def _read_resource_content(uri: str) -> str:
         if latest:
             return latest
         return "(no session yet — run polycheck.run first)"
+    if uri == "polycheck://setup":
+        from .readiness import SETUP_GUIDE
+
+        return SETUP_GUIDE
     raise ValueError(f"Unknown resource: {uri}")
 
 
@@ -780,6 +792,7 @@ def _audit_summary(
     dependency: dict,
     severity: str,
 ) -> dict:
+    from .readiness import profile_guidance
     by_severity = {
         severity_name: sum(1 for f in findings if f.severity.name == severity_name)
         for severity_name in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
@@ -812,7 +825,12 @@ def _audit_summary(
         "missing_tools": dependency["missing_tools"],
         "missing_system_dependencies": dependency["missing_system_dependencies"],
         "reports": [str(p) for p in reports],
-        "resources": ["polycheck://findings/markdown", "polycheck://findings/json"],
+        "resources": [
+            "polycheck://findings/markdown",
+            "polycheck://findings/json",
+            "polycheck://setup",
+        ],
+        "profile_guidance": profile_guidance(),
     }
 
 
@@ -829,6 +847,7 @@ def _workflow_summary(
     severity: str,
     run_id: str,
 ) -> dict:
+    from .readiness import profile_guidance
     by_severity = {
         severity_name: sum(1 for f in findings if f.severity.name == severity_name)
         for severity_name in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
@@ -881,7 +900,12 @@ def _workflow_summary(
         "install_results": install_results,
         "tools_failed": [r.tool for r in results if r.status in ("error", "timeout")],
         "reports": [str(p) for p in reports],
-        "resources": ["polycheck://findings/markdown", "polycheck://findings/json"],
+        "resources": [
+            "polycheck://findings/markdown",
+            "polycheck://findings/json",
+            "polycheck://setup",
+        ],
+        "profile_guidance": profile_guidance(),
     }
 
 
@@ -918,25 +942,8 @@ def _next_action(
 
 
 def _check_docker() -> dict:
-    """Check if Docker is installed and running."""
-    docker_ok = shutil.which("docker") is not None
-    docker_running = False
-    if docker_ok:
-        try:
-            r = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
-            docker_running = r.returncode == 0
-        except (subprocess.TimeoutExpired, OSError):
-            pass
+    """Check if Docker is installed and running (single source of truth:
+    readiness.docker_status, shared with `polycheck doctor --json`)."""
+    from .readiness import docker_status
 
-    if docker_running:
-        status = _STATUS_INSTALLED
-    elif docker_ok:
-        status = "exists but not running"
-    else:
-        status = _STATUS_NOT_FOUND
-
-    note = "" if docker_running else (
-        "Docker is needed for sonarless (SonarQube analysis). "
-        "Install Docker: https://docs.docker.com/get-docker/"
-    )
-    return {"name": "docker", "status": status, "note": note}
+    return docker_status()

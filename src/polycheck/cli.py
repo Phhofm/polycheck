@@ -20,6 +20,7 @@ Subcommands
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -664,6 +665,14 @@ def doctor(
         "--fail-on-missing",
         help="Exit non-zero if any bundled analyzer is missing. Default: exit 0.",
     ),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Print a machine-readable readiness payload instead of the "
+        "table — tools with profile participation, system prerequisites "
+        "(Docker for sonarless), profile guidance, and the install "
+        "policy. Designed for LLM coding assistants.",
+    ),
 ) -> None:
     """Check which bundled analyzers are installed and which are missing.
 
@@ -671,6 +680,15 @@ def doctor(
     installed tool, prints its version. This is the recommended first
     step on a fresh machine.
     """
+    if as_json:
+        from .readiness import readiness
+
+        payload = readiness(default_registry)
+        console.print_json(json.dumps(payload))
+        if payload["summary"]["missing"] and fail_on_missing:
+            raise typer.Exit(code=1)
+        return
+
     table = Table(title="polycheck doctor")
     table.add_column("Tool", style="cyan")
     table.add_column("Status")

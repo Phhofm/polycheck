@@ -619,3 +619,45 @@ def test_handle_audit_run_unknown_profile_is_error(tmp_path: Path):
     payload = json.loads(response[0].text)
 
     assert "error" in payload
+
+
+# --- LLM readiness surface (0.3.6) -------------------------------------------
+
+
+def test_setup_resource_is_listed_and_readable():
+    from polycheck.mcp_server import _read_resource_content
+
+    guide = _read_resource_content("polycheck://setup")
+
+    # The operational knowledge an agent needs before its first deep run:
+    assert "Docker" in guide and "sonarless" in guide
+    assert "deep" in guide and "pr" in guide
+    # The install policy: what polycheck will never do itself.
+    assert "never" in guide
+
+
+def test_polycheck_run_response_carries_profile_guidance(tmp_path: Path, monkeypatch):
+    from polycheck import mcp_server
+
+    class _FakeRunner:
+        def __init__(self, repo, config):
+            self.repo = repo
+            self.config = config
+
+        def run(self, parallel=False, tools=None, profile=None):
+            return [], []
+
+    monkeypatch.setattr(mcp_server, "Runner", _FakeRunner)
+    monkeypatch.setattr(
+        mcp_server,
+        "_dependency_check",
+        lambda repo, cfg=None, tools=None: {"missing_tools": [], "missing_system_dependencies": []},
+    )
+
+    response = mcp_server._handle_polycheck({
+        "repo": str(tmp_path),
+        "parallel": False,
+    })
+    payload = json.loads(response[0].text)
+
+    assert set(payload["profile_guidance"]) == {"default", "pr", "deep"}

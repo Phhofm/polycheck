@@ -208,6 +208,7 @@ polycheck init --dry-run --host all        # preview initialization
 polycheck init --host all --agents-only    # write only the reviewer subagent
 polycheck init --scope project --git-hook pre-push   # dev-cycle quality gate
 polycheck doctor                           # show installed/missing tools, exit 0 by default
+polycheck doctor --json                    # machine-readable readiness: tools, prerequisites, profiles, install policy
 polycheck doctor --fail-on-missing         # exit 1 when tools are missing
 polycheck install                          # install every missing tool
 polycheck install ruff mypy                # install specific tools
@@ -366,11 +367,21 @@ diagnostics, listings, explanations, and installs belong to the CLI.
 |----------|-------------|
 | `polycheck://session/latest` | Latest `polycheck.run` workflow summary. |
 | `polycheck://triage/prompt` | The interactive LLM triage prompt. |
+| `polycheck://setup` | Setup and operations guide for LLM agents: profiles, prerequisites (Docker for sonarless), install policy, the daily loop. |
 | `polycheck://findings/markdown` | Last run's markdown report. |
 | `polycheck://findings/json` | Last run's JSON report. |
 
 CLI equivalents of the retired MCP tools: `polycheck doctor`,
 `polycheck install`, `polycheck list-tools`, `polycheck explain`.
+
+**Driving polycheck with an LLM?** Point the agent at
+`polycheck://setup` and `polycheck doctor --json` first: the resource
+explains when to use which profile, that sonarless runs the SonarQube
+engine in a Docker container the sonarless CLI manages (manual install
+by design, Docker never auto-installed), and what polycheck will and
+will not install itself. The scan responses carry the same
+`profile_guidance` block, so the agent learns the modes even without
+reading the resource.
 
 ### Code Mode friendly
 
