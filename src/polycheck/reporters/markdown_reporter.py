@@ -6,6 +6,7 @@ agents can ``read_file()`` the report rather than re-walk the JSON.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -38,6 +39,7 @@ def render(
     lines.extend(_category_section(findings))
     lines.extend(_track_section(findings))
     lines.extend(_tool_execution_section(results))
+    lines.extend(_metrics_section(results))
     lines.extend(_findings_sections(findings))
 
     out.write_text("\n".join(lines), encoding="utf-8")
@@ -129,6 +131,27 @@ def _tool_execution_section(results: list) -> list[str]:
             if r.error:
                 lines.append(f"- **{r.tool}**: `{r.error}`")
     lines.append("")
+    return lines
+
+
+def _metrics_section(results: list) -> list[str]:
+    """Scan-level metrics section (e.g. scb-check's SlopCodeBench
+    composites) — trendable across runs."""
+    sources = [r for r in results if r.metrics]
+    if not sources:
+        return []
+    lines = ["## Scan metrics", ""]
+    for r in sources:
+        lines.append(f"**{r.tool}**:")
+        lines.append("")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
+        for key, value in r.metrics.items():
+            if isinstance(value, dict):  # e.g. syntax_by_language
+                lines.append(f"| {key} | `{json.dumps(value, sort_keys=True)}` |")
+            else:
+                lines.append(f"| {key} | {value} |")
+        lines.append("")
     return lines
 
 

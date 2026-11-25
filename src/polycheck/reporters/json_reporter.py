@@ -54,5 +54,13 @@ def render(
         "findings": [f.to_dict() for f in findings],
     }
 
+    # Scan-level metrics (e.g. scb-check's SlopCodeBench composites) —
+    # keyed by tool so future metric sources compose. Omitted entirely
+    # when no tool published any, keeping the schema stable for
+    # consumers that diff reports across runs.
+    metrics_sources = {r.tool: r.metrics for r in results if r.metrics}
+    if metrics_sources:
+        payload["metrics"] = metrics_sources
+
     out.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return [out]

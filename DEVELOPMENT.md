@@ -278,10 +278,17 @@ after, verdict, reason.
     mitigation).
   * **#8 — feature: SlopCodeBench composites as first-class report
     metadata.** Verified feasible: `scb-check check --report` emits
-    `verbosity`/`erosion`/`cog_erosion` directly. Backlogged as its own
-    block (adapter gains a JSON mode; report.json gains a `metrics`
-    section; trendable across runs — "did the codebase stay stable
-    under the skill?"). Also adopted: doctor --json now embeds a
+    `verbosity`/`erosion`/`cog_erosion` directly. Implemented 2026-11-25
+    (0.3.8, before Loop 3): the scb-check adapter makes a second
+    `--report` invocation after the human-format finding run (the human
+    output carries no composites; scb-check is ~1.4 s per mode on this
+    repo), publishes the full report payload via the new `Tool.
+    scan_metrics` hook, the runner copies it into `ToolResult.metrics`,
+    and `polycheck-report.json` embeds it top-level as
+    `metrics: {"scb-check": {...}}` (omitted entirely when no tool
+    publishes metrics — schema stays stable for consumers diffing
+    reports across runs; the markdown report gains a "Scan metrics"
+    section). A failed report run never breaks the findings. Also adopted: doctor --json now embeds a
     `skill` block (pointer to polycheck://setup + the raw
     polycheck-skill.md URL) so an agent reaches the full guide in one
     hop without any host-specific skill installed. Verdict: KEPT.

@@ -11,6 +11,7 @@ Exit codes: 0 = clean, 1 = findings (normal), 2 = usage error.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -50,7 +51,24 @@ class ScbCheckTool(Tool):
             raise RuntimeError(
                 f"scb-check exited {out.returncode}: {(out.stderr or out.stdout).strip()[:200]}"
             )
-        return self._parse(out.stdout)
+        findings = self._parse(out.stdout)
+        self._collect_metrics(repo)
+        return findings
+
+    def _collect_metrics(self, repo: Path) -> None:
+        """Publish the SlopCodeBench composites via a second, JSON-report
+        invocation. The human output carries no composites; metrics are
+        additive — a failed report run never breaks the findings."""
+        try:
+            out = subprocess.run(
+                ["scb-check", "check", ".", "--report", *self.extra_args()],
+                cwd=repo, capture_output=True, text=True, timeout=600,
+            )
+            data = json.loads(out.stdout)
+            if isinstance(data, dict):
+                self.scan_metrics = data
+        except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError, RuntimeError):
+            self.scan_metrics = None
 
     def _parse(self, text: str) -> list[Finding]:
         findings: list[Finding] = []

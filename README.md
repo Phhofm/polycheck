@@ -218,6 +218,12 @@ erosion metrics are cross-language. Structural decay across *modules*
 structural adapters (`tach` for Python, `dependency-cruiser` for
 JS/TS) in the deep profile.
 
+**Trendable composites:** `polycheck-report.json` carries the
+SlopCodeBench composites (verbosity, erosion, cog_erosion) under a
+top-level `metrics` key on every scan that runs scb-check — diff them
+across runs to see whether an agent-assisted codebase is staying
+stable or eroding turn over turn.
+
 ---
 
 ## Scan profiles

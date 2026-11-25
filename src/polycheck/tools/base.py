@@ -178,6 +178,13 @@ class Tool(abc.ABC):
     #: When True, the tool runs on every repo regardless of language.
     universal: bool = False
 
+    #: Scan-level metrics a tool can publish alongside its findings
+    #: (e.g. scb-check's SlopCodeBench composites: verbosity, erosion,
+    #: cog_erosion). Set as an instance attribute during run(); the
+    #: runner copies it into the ToolResult and the JSON report embeds
+    #: it under ``metrics``. None = no metrics.
+    scan_metrics: dict | None = None
+
     #: Structural adapters (architecture contracts, module boundaries)
     #: are deep-profile tools: fast, but only meaningful when the user
     #: opted in via their config file, and out of the pr fast path.

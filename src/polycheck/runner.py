@@ -43,6 +43,7 @@ class ToolResult:
     duration_sec: float = 0.0
     error: str | None = None
     message: str = ""         # e.g. why a tool was not applicable
+    metrics: dict = field(default_factory=dict)  # scan-level metrics (e.g. SlopCodeBench composites)
 
 
 class Runner:
@@ -166,8 +167,10 @@ class Runner:
             findings = inst.run(self.repo)
             duration = time.monotonic() - start
             status = "ok" if findings else "no-findings"
+            metrics = getattr(inst, "scan_metrics", None)
             return ToolResult(tool=name, status=status, findings=findings,
-                              duration_sec=duration)
+                              duration_sec=duration,
+                              metrics=dict(metrics) if isinstance(metrics, dict) else {})
         except subprocess.TimeoutExpired:
             duration = time.monotonic() - start
             return ToolResult(tool=name, status="timeout", duration_sec=duration,
