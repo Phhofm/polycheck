@@ -4,56 +4,65 @@ Single log for progress, decisions, and experiments. Task checklists live in
 `MASTERPLAN.md` (task-by-task with commit messages) and `implementation_plan.md`
 (milestones); this file records *state* and *why*, so nothing goes stale.
 
-## Next session start here (0.3.4 — the working agreement)
+## Next session start here
 
-A fresh session reads this file top to bottom. The next work block:
+0.3.4 (profiles, tach, quality questions) shipped and released — see the
+0.3.4 experiments entry below for evidence and the three audit fixes.
 
-1. **Implement `--profile pr|deep`** per the design decision in
-   *Backlog: 0.3.4+* below (presets over existing primitives; default scan
-   stays unchanged). PR scoping = changed tracked files (git diff vs HEAD
-   or merge-base), gate HIGH; deep = heavy tools ON + structural adapters.
-   The pre-push hook switches to `--profile pr`.
-2. **First structural adapter: import-linter or tach** (Python,
-   architecture/circular imports) — seeded-defect expectation required
-   before it ships (D1: one adapter per iteration, verified).
-3. **Reviewer template**: add the "Quality Questions" section (deep
-   profile) — SRP/SOLID/LoD/names/comments-why/design patterns as
-   checklist QUESTIONS, never fabricated findings.
-4. **Cross-model audit** of the heavy adapters (sonarless/pip-audit/
-   npm-audit/semgrep) against real CLI/API payloads — their parsing rests
-   on assumed shapes; the seeded verifier skips heavy tools.
+Suggested next block (from the backlog, one per iteration, D1):
+
+1. **Baseline + diff in the pr hook** — the hook could pass `--diff` so a
+   taken baseline filters known findings out of the gate. Deliberately not
+   shipped in 0.3.4: the hook is the "always safe" path; baseline semantics
+   in a gate need a repo that has actually taken one.
+2. **dependency-cruiser** (JS/TS structural counterpart to tach), seeded
+   expectation required before it ships.
+3. **Cross-model audit follow-ups**: eslint expectation still needs a
+   machine with eslint; knip expectation still undecided.
+4. **D3/D4 pending items** (README reframe is partially done; MCP surface
+   cut still pending).
 
 Working agreement (Philip, 2026-11-25): **everything is verified in this
 repo first** — local gates green, live run on a scratch/synthetic repo,
 pipx E2E from a fresh install — *then* it gets tested in other repos.
-Release 0.3.4 afterwards (assert-anchored changelog insert, `&&`-chained
-gates before commit, tag, PyPI verification — see the 0.3.2 process-miss
-entry in Experiments).
+Releases: assert-anchored changelog insert, `&&`-chained gates before
+commit, tag, PyPI verification — see the 0.3.2 process-miss entry in
+Experiments.
 
 Also read before starting: the *Experiments* log (live-test history and
 the two external live tests that produced meta-findings #1–#5, all fixed
-or logged), the *Decisions* section, and the *Backlog: 0.3.4+* section.
+or logged), the *Decisions* section, and the *Backlog* section.
 
-## Current state (verified 2026-11-25)
+## Current state (verified 2026-11-25, 0.3.4 work block)
 
 Environment: Python 3.12, tooling installed to `~/.local` (pipx-style).
 `polycheck` on PATH = local source install (`pipx install --force
-/home/phhofm/Documents/GitHub/polycheck`) at 0.3.3 feature level.
-`scb-check` also pipx-installed.
+/home/phhofm/Documents/GitHub/polycheck`); refresh it after every feature
+block so hook/CLI E2E runs test the new code. `scb-check` also
+pipx-installed.
 
 | Gate | Command | Result |
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
 | Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 168 passed, 0 failed, 1 skipped |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 201 passed, 0 failed, 1 skipped (LUCID_PATH env) |
 
-Latest release: **0.3.3** on PyPI (JSON API verified + fresh pipx E2E);
-v0.3.0–v0.3.3 all released via Trusted Publishing. CI note: GitHub runner
-capacity queued test-matrix runs for hours on 2026-11-23/24 — Release
-workflows stayed green; local gates are the verification chain.
+Latest release: **0.3.4** (tagged this session; verify on PyPI after the
+publish workflow finishes). v0.3.0–v0.3.3 all released via Trusted
+Publishing. CI note: GitHub runner capacity queued test-matrix runs for
+hours on 2026-11-23/24 — Release workflows stayed green; local gates are
+the verification chain.
 
 Environment notes discovered this session:
 
+* **tach 0.35.3 is pipx-installed** (`pipx install tach`) — needed by the
+  tach adapter's seeded verification. import-linter 2.17 was installed
+  for the adapter evaluation only (human-text output, no JSON) and can be
+  removed with `pipx uninstall import-linter`.
+* The bash tool resets cwd between calls — scratch-repo work must pass an
+  explicit `workdir` per call; a bare `git add -A && git commit` once ran
+  in the polycheck repo instead of a scratch dir (accidental `tach.toml`
+  + "seed" commit, immediately reset — see the 0.3.4 experiment entry).
 * `typer` 0.23 was installed without its `shellingham` dependency → `import typer`
   (and therefore the whole CLI) failed. Fixed by `pip install --user
   --break-system-packages shellingham`. Root cause: typer 0.23 split into
@@ -115,6 +124,49 @@ Format: id, date, decision, reason, status. User decisions override anything her
 
 Format per §7: date, hypothesis/recommendation, metric + command, before →
 after, verdict, reason.
+
+* **2026-11-25 — 0.3.4: profiles + first structural adapter + cross-model
+  audit of the heavy adapters.** What: (1) `--profile pr|deep` as presets
+  over existing primitives (profiles.py): pr = fast tools only (heavy +
+  structural skipped), findings scoped to changed tracked files (git diff
+  vs HEAD plus merge-base-ahead when an upstream exists), gate HIGH; deep
+  = every tool incl. heavy, no gate; default unchanged (MEDIUM gate).
+  Pre-push hook switched to `--profile pr`; MCP `polycheck.run` and
+  `audit_run` gained a `profile` param (pr presets the HIGH severity
+  floor); `/polycheck` workflow template documents the mode argument.
+  (2) First structural adapter **tach** (Category.ARCHITECTURE, new
+  `structural` Tool flag): chosen over import-linter on evidence —
+  import-linter 2.17 emits human text with ASCII art and no JSON, tach
+  0.35.3 emits clean JSON (`check --output json`); tach needs declared
+  `depends_on` edges, so the adapter runs only when tach.toml /
+  `[tool.tach]` exists. Seeded verifier expectation `tach: 1` verified
+  `ok` against the real binary (0.2s). (3) Reviewer template gained the
+  "Quality questions (deep profile)" section — SRP/SOLID/LoD/names/
+  comments-why/patterns/observability/scalability as checklist QUESTIONS,
+  never findings. (4) Cross-model audit of the heavy adapters against
+  real CLI/API payloads: **pip-audit** — real payload matched the parser
+  (54/54 unique vuln IDs, pillow==9.0.0) but the pyproject fallback wrote
+  `.polycheck-pip-audit-reqs.txt` into the repo and never removed it
+  (fixed: tempfile outside the repo, removed after the run) and crashed
+  on a non-dict JSON payload (fixed: tolerant parse). **npm-audit** —
+  real payload matched (6/6 via-entries, lodash 4.17.20). **semgrep** —
+  the parser read `extra.start` but real 1.186.0 output carries
+  `start.line/col` on the result object, so every location was silently
+  None (fixed; verified against a real local-rule run). **sonarless** —
+  full live run against the real SonarQube API matched the parse
+  (`sonar:bug:python:S930`, BLOCKER→CRITICAL). Note: semgrep OSS
+  `--config=auto` selects a rule subset (327 of 1074 rules on the seed)
+  and misses textbook defects like `yaml.load` without login-tier rules —
+  tiering behavior, not a polycheck bug. Verification chain: gates green
+  (ruff/mypy/201 tests), live scratch-repo runs of all three profiles
+  (default exit 1 on HIGH mypy — unchanged; pr exit 0 with only
+  src/new.py findings in scope, exit 1 after planting a HIGH F821 in the
+  changed file; deep ran pip-audit/semgrep/sonarless and exited 0),
+  bare-remote pre-push hook E2E (HIGH finding in changed file → push
+  blocked; fix → push lands). Process note: a scratch-repo `git add -A
+  && git commit` ran in this repo by mistake (cwd reset) — accidental
+  tach.toml commit reset immediately (`git reset a0798b3`), lesson
+  recorded in environment notes. Verdict: KEPT.
 
 * **2026-11-24 — 0.3.3: track buckets + reviewer rules from the
   bigger-repo test.** Live-test feedback turned into features: (1) track
@@ -369,6 +421,14 @@ after, verdict, reason.
    (0.3.3)~~ — done from the bigger-repo live test (1717 raw → 7 real).
 10. ~~extra_args plumbing (0.3.2)~~ — done (meta-finding #4 from the
     colleague loop).
+11. ~~Profiles `--profile pr|deep` + hook switch (0.3.4)~~ — done, live
+    verified incl. the hook E2E.
+12. ~~First structural adapter: tach (0.3.4)~~ — done, seeded expectation
+    verified against the real binary.
+13. ~~Reviewer "Quality questions" section (0.3.4)~~ — done.
+14. ~~Cross-model audit of the heavy adapters (0.3.4)~~ — done against
+    real payloads; pip-audit temp-file leak + crash tolerance and the
+    semgrep location bug found and fixed; npm-audit/sonarless clean.
 
 ## Backlog: 0.3.4+ (profiles & structural adapters)
 
@@ -394,10 +454,10 @@ scoping, gate) — no new engines.
 **Structural adapters (deep profile), one per iteration, seeded-verifier
 expectation required each (D1):**
 
-* **import-linter or tach** (Python) — circular imports, layer
-  violations, modularity. First architecture adapter; new
-  `Category.ARCHITECTURE` if landed. dependency-cruiser as the JS/TS
-  counterpart afterwards.
+* ~~**import-linter or tach** (Python) — circular imports, layer
+  violations, modularity~~ — done 2026-11-25: **tach** shipped (JSON
+  output beat import-linter's human text; see the 0.3.4 experiment
+  entry). dependency-cruiser as the JS/TS counterpart is next.
 * **interrogate** — docstring coverage per public symbol
   (documentation coverage, deterministic).
 * **ncu / `pip list --outdated`** — dependency drift and deprecation
@@ -422,11 +482,11 @@ Demeter, meaningful names, comments-for-why, design patterns,
 observability, scalability. Performance stays out of scope (no runtime
 data). Test coverage needs running test suites — heavy-opt-in at most.
 
-**Cross-model audit:** fresh-model audit of the heavy adapters
-(sonarless/pip-audit/npm-audit/semgrep) against real CLI/API payloads —
-their parsing rests on assumed shapes and the seeded verifier skips
-heavy tools. The colleague's suggested audit prompt is good; scope it to
-what the fixtures do not already cover.
+**Cross-model audit:** ~~fresh-model audit of the heavy adapters
+(sonarless/pip-audit/npm-audit/semgrep) against real CLI/API payloads~~ —
+done 2026-11-25 (3 real bugs found and fixed; see the 0.3.4 experiment
+entry). The remaining gap: the seeded verifier still skips heavy tools by
+design — the audit payloads are pinned as unit tests instead.
 
 **Language gaps / docs:** `.vue`/Svelte/Angular SFCs are not eslint-
 scanned (plugin + parser needed) — document the `extra_args` recipe;

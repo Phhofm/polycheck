@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.3.4 (2026-11-25)
+
+Profiles, the first structural adapter, and a cross-model audit of the
+heavy analyzers against real tool output:
+
+Features:
+  * **Scan profiles** — `--profile pr` (fast tools only, findings scoped
+    to changed tracked files, HIGH gate; the pre-push hook now runs it)
+    and `--profile deep` (every tool including heavy ones, no gate —
+    output feeds triage → baseline). The default scan is unchanged
+    (whole repo, MEDIUM gate). Profiles are presets over existing
+    primitives — tool selection, scoping, gate — no new engines.
+  * **`tach` adapter** — first structural adapter (`ARCHITECTURE`
+    category): undeclared cross-module dependencies and, with
+    `forbid_circular_dependencies`, dependency cycles from
+    `tach check --output json`. Runs when the repo carries a
+    `tach.toml` (or `[tool.tach]`); deep-profile family. Chosen over
+    import-linter on real-output evidence: tach emits JSON,
+    import-linter only human text.
+  * Reviewer subagent: "Quality questions (deep profile)" section —
+    SRP, SOLID, Law of Demeter, naming, comments-why, design patterns,
+    observability, scalability as checklist QUESTIONS for the user,
+    never fabricated findings.
+  * MCP `polycheck.run` / `audit_run` accept `profile: "pr" | "deep"`
+    (pr presets the HIGH severity floor); the `/polycheck` workflow
+    documents the mode argument.
+
+Fixed (cross-model audit against real CLI/API payloads):
+  * **semgrep**: findings carried no line/column — the parser read
+    `extra.start`, but real semgrep output has `start` on the result
+    object. Every semgrep location was silently `None` before.
+  * **pip-audit**: the pyproject.toml fallback wrote its temporary
+    requirements file into the repo (`.polycheck-pip-audit-reqs.txt`)
+    and never removed it — pollution the next gitleaks run would scan.
+    Now a temp file outside the repo, removed after the run.
+  * **pip-audit**: a non-object JSON payload crashed the parser;
+    it is now tolerated as "no findings" while the documented object
+    shape parses unchanged.
+
 ## 0.3.3 (2026-11-24)
 
 From the bigger-repo live test (1717 raw findings on first scan):
@@ -20,6 +59,11 @@ Features:
     lines before proposing actions (action already satisfied → FALSE
     POSITIVE with evidence); the return format carries a coverage-gap line
     (e.g. "npm-audit not installed — no CVE scan this run").
+  * New `scb-check` adapter: AI-slop metrics from SlopCodeBench —
+    duplicated AST blocks (DUPLICATION), slop patterns like
+    `range(len(x))` and `dict.get(k, None)` (LINT), and erosion
+    findings for functions above the complexity threshold (COMPLEXITY).
+
 ## 0.3.2 (2026-11-24)
 
 Features:
@@ -47,14 +91,6 @@ Fixes from the first external live test (Philip's vibecode-skill repo):
     repos without `pyproject.toml` now run ruff/mypy/vulture/scb-check.
   * actionlint is no longer silently dropped from every run (it declared
     no languages, so the candidate filter excluded it).
-
-## Unreleased
-
-Features:
-  * New `scb-check` adapter: AI-slop metrics from SlopCodeBench —
-    duplicated AST blocks (DUPLICATION), slop patterns like
-    `range(len(x))` and `dict.get(k, None)` (LINT), and erosion
-    findings for functions above the complexity threshold (COMPLEXITY)
 
 ## 0.3.0 (2026-11-24)
 
