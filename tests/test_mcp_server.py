@@ -273,13 +273,17 @@ def test_dependency_check_scopes_system_dependency_to_requested_tools(tmp_path: 
     assert dependency["missing_system_dependencies"] == []
 
 
-def test_tool_definitions_are_slim_two_tools():
+def test_tool_definitions_are_slim_two_state_changers_and_doctor():
+    """The surface stays slim: two state-changing workflow tools plus one
+    READ-ONLY readiness tool (0.3.15). Diagnostics needed the doctor
+    tool once the 0.3.14 profile plan made pre-scan readiness part of
+    the guided loop — MCP-first agents must not shell out for it."""
     from polycheck import mcp_server
 
     tools = {tool.name: tool for tool in mcp_server._build_tool_definitions()}
 
-    assert set(tools) == {"polycheck.run", "polycheck.audit_run"}
-    assert "polycheck.doctor" not in tools["polycheck.run"].description
+    assert set(tools) == {"polycheck.run", "polycheck.audit_run", "polycheck.doctor"}
+    assert "read-only" in tools["polycheck.doctor"].description.lower()
 
 
 def test_dispatch_rejects_retired_tools(monkeypatch):
@@ -298,11 +302,16 @@ def test_dispatch_rejects_retired_tools(monkeypatch):
     assert mcp_server._dispatch_tool("polycheck.run", {"repo": "a"}) == ["ok"]
     assert mcp_server._dispatch_tool("polycheck.audit_run", {"repo": "a"})
 
-    for retired in ("polycheck", "polycheck.doctor", "polycheck.install",
+    # doctor is live (0.3.15); a bare install tool stays retired on
+    # purpose — installs belong behind the guided flow's consent gate.
+    monkeypatch.setattr(mcp_server, "_handle_doctor", fake_handle)
+    assert mcp_server._dispatch_tool("polycheck.doctor", {"repo": "a"})
+
+    for retired in ("polycheck", "polycheck.install",
                     "polycheck.list_tools", "polycheck.explain_finding"):
         with pytest.raises(ValueError, match="Unknown tool"):
             mcp_server._dispatch_tool(retired, {"repo": "x"})
-    assert calls == [{"repo": "a"}]
+    assert calls == [{"repo": "a"}, {"repo": "a"}]
 
 
 def test_handle_polycheck_emits_progress_phases(tmp_path: Path, monkeypatch):
@@ -684,3 +693,104 @@ def test_polycheck_run_response_carries_profile_guidance(tmp_path: Path, monkeyp
     payload = json.loads(response[0].text)
 
     assert set(payload["profile_guidance"]) == {"default", "pr", "deep"}
+
+
+# --- polycheck.doctor (0.3.15) --------------------------------------------------
+
+
+def _stub_registry(monkeypatch):
+    from polycheck import mcp_server
+    from polycheck.finding import Category
+    from polycheck.registry import ToolRegistry
+    from polycheck.tools.base import Tool
+
+    class _Installed(Tool):
+        name = "stub-installed"
+        category = Category.LINT
+        languages: list[str] = []
+        universal = True
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return True
+
+        def run(self, repo):
+            return []
+
+    class _Missing(Tool):
+        name = "stub-missing"
+        category = Category.LINT
+        languages: list[str] = []
+        universal = True
+        installer = "pipx:stub-missing"
+
+        def is_applicable(self, repo):
+            return True
+
+        def is_installed(self):
+            return False
+
+        def run(self, repo):
+            return []
+
+    reg = ToolRegistry()
+    reg.register(_Installed)
+    reg.register(_Missing)
+    monkeypatch.setattr(mcp_server, "default_registry", reg)
+
+
+def test_handle_doctor_returns_profile_plan(tmp_path: Path, monkeypatch):
+    """The module docstring promised a doctor tool but the surface never
+    shipped one — an MCP-first agent had to shell out to the CLI for the
+    0.3.14 profile plan. Read-only parity closes that gap."""
+    from polycheck import mcp_server
+
+    _stub_registry(monkeypatch)
+    response = mcp_server._handle_doctor({"repo": str(tmp_path)})
+
+    payload = json.loads(response[0].text)
+    assert [t["name"] for t in payload["tools"]] == ["stub-installed", "stub-missing"]
+    deep = payload["profile_plan"]["deep"]
+    assert deep["applicable"] == 2
+    assert deep["ready"] == 1
+    missing = deep["missing"][0]
+    assert missing["name"] == "stub-missing"
+    assert missing["executor"] == "agent"
+    assert missing["install_hint"]
+
+
+def test_handle_doctor_without_repo_is_registry_wide(monkeypatch):
+    from polycheck import mcp_server
+
+    _stub_registry(monkeypatch)
+    response = mcp_server._handle_doctor({})
+
+    payload = json.loads(response[0].text)
+    assert "profile_plan" not in payload
+    assert payload["summary"]["installed"] == 1
+
+
+def test_handle_doctor_rejects_missing_repo_dir(tmp_path: Path, monkeypatch):
+    from polycheck import mcp_server
+
+    _stub_registry(monkeypatch)
+    response = mcp_server._handle_doctor({"repo": str(tmp_path / "nope")})
+
+    payload = json.loads(response[0].text)
+    assert "error" in payload
+
+
+def test_doctor_tool_is_registered_and_dispatched(tmp_path: Path, monkeypatch):
+    from polycheck import mcp_server
+
+    _stub_registry(monkeypatch)
+    names = [t.name for t in mcp_server._build_tool_definitions()]
+    assert names == ["polycheck.run", "polycheck.audit_run", "polycheck.doctor"]
+
+    response = mcp_server._dispatch_tool(
+        "polycheck.doctor", {"repo": str(tmp_path)}
+    )
+    payload = json.loads(response[0].text)
+    assert payload["profile_plan"]["deep"]["missing"][0]["name"] == "stub-missing"

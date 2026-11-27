@@ -14,9 +14,13 @@ And advanced/low-level tools:
   * ``polycheck.list_tools`` — list available analyzers.
   * ``polycheck.explain_finding`` — explain a finding's category and
     how to triage it.
-  * ``polycheck.doctor`` — check which tools are installed and which
-    are missing. Reports Docker status for sonarless.
-  * ``polycheck.install`` — install missing tools.
+  * ``polycheck.doctor`` — read-only readiness: installed analyzers,
+    system prerequisites (Docker for sonarless), and with a repo path
+    the per-profile plan (applicable/ready/missing, executor tags).
+  * ``polycheck.install`` — installs stay behind the guided run flow
+    (`install_mode` + `install_confirmed`) or the CLI; there is no
+    bare install tool, so an agent can never install without the
+    user's explicit approval step.
 
 And resources for reports and session context:
 
@@ -133,8 +137,11 @@ If the report mentions missing tools or the user asks about installing them:
    `install_mode: "tools_only"`.
 2. Ask the user to approve analyzer installation before setting
    `install_confirmed: true`.
-3. The MCP surface has no separate doctor/install tools; for manual
-   diagnostics use the CLI: `polycheck doctor`, `polycheck install`.
+3. The read-only `polycheck.doctor` MCP tool carries the same payload
+   as `polycheck doctor --json <repo>` — readiness plus the per-profile
+   plan. Use it BEFORE a scan to make the profile complete. There is
+   still no bare install tool: installs go through the guided flow's
+   consent gate or the CLI (`polycheck install`).
 4. For tools requiring manual installation, such as Docker for sonarless:
    - **Docker**: Ask your LLM coding assistant to help install Docker
      for this OS. Common options:
@@ -331,10 +338,11 @@ def _workflow_tool(name: str):
 def _build_tool_definitions():
     """Build the list of MCP tool definitions.
 
-    Deliberately slim: two tools. Diagnostics, listings, explanations,
-    and installs belong to the CLI (`polycheck doctor`, `polycheck
-    install`, `polycheck list-tools`); fewer tools means LLMs pick the
-    right one reliably.
+    Deliberately slim: two workflow tools plus one read-only readiness
+    tool. Listings, explanations, and installs belong to the CLI or the
+    guided flow's consent gate; fewer state-changing tools means LLMs
+    pick the right one reliably, while doctor gives MCP-first agents
+    the 0.3.14 setup plan without shelling out.
     """
     from mcp.types import Tool
 
@@ -371,6 +379,29 @@ def _build_tool_definitions():
                 "required": ["repo"],
             },
         ),
+        Tool(
+            name="polycheck.doctor",
+            description=(
+                "Read-only readiness check: which analyzers are installed, "
+                "system prerequisites (Docker for sonarless), and — with a "
+                "repo path — a per-profile plan (applicable/ready/missing, "
+                "each missing entry with install command and an agent/human "
+                "executor tag). Call this BEFORE polycheck.run so the target "
+                "profile can be made complete; installs stay behind the "
+                "guided run's consent flow."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Optional repo root; without it the "
+                        "payload is registry-wide.",
+                    },
+                },
+                "required": [],
+            },
+        ),
     ]
 
 
@@ -383,11 +414,36 @@ def _dispatch_tool(name: str, arguments: dict):
     handlers = {
         "polycheck.run": _handle_polycheck,
         "polycheck.audit_run": _handle_audit_run,
+        "polycheck.doctor": _handle_doctor,
     }
     handler = handlers.get(name)
     if handler is None:
         raise ValueError(f"Unknown tool: {name}")
     return handler(arguments)
+
+
+def _handle_doctor(arguments: dict) -> list:
+    """Readiness + per-profile setup plan for an MCP-first agent.
+
+    Read-only on purpose: installs stay behind the guided run flow's
+    consent gate (`install_mode` + `install_confirmed`) or the CLI, so
+    this tool can never change the machine.
+    """
+    repo_arg = arguments.get("repo")
+    repo: Path | None = None
+    cfg: Config | None = None
+    if repo_arg:
+        repo = Path(repo_arg).expanduser().resolve()
+        if not repo.is_dir():
+            return _text_content({"error": f"repo is not a directory: {repo}"})
+        try:
+            cfg = Config.load(repo)
+        except Exception:  # noqa: BLE001 — a broken config must not crash doctor
+            cfg = None
+    from .readiness import readiness
+
+    payload = readiness(default_registry, repo=repo, config=cfg)
+    return _text_content(payload)
 
 
 def _read_resource_content(uri: str) -> str:
