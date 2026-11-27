@@ -28,6 +28,7 @@ def render(
     results: list[ToolResult],
     *,
     report_dir: Path,
+    coverage: dict | None = None,
 ) -> list[Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     out = report_dir / "polycheck-report.sarif"

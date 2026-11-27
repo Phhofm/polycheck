@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from pathlib import Path
 
-from .profiles import PROFILES
+from .profiles import PROFILES, is_skipped
 from .tools.base import Tool
 
 _PROFILE_ORDER = ("default", "pr", "deep")
@@ -110,27 +111,95 @@ INSTALL_POLICY: dict[str, str] = {
 }
 
 
-def readiness(registry) -> dict:
-    """The full readiness payload for ``doctor --json`` and the MCP server."""
+def profile_plan(
+    registry, repo: Path, config=None
+) -> dict:
+    """Per-profile applicable/ready/missing plan for one repo.
+
+    Joins the tool registry with the repo's detected languages and each
+    adapter's own ``is_applicable`` check, then splits by profile: a
+    missing tool only counts where its profile would actually run it
+    (a heavy tool absent from ``pr`` never blocks a pr gate). Each
+    missing entry carries an ``executor`` tag — ``agent`` for
+    package-manager installs polycheck can run after user approval,
+    ``human`` for the installs policy reserves for the user (apt,
+    remote scripts, Docker). 0.3.14: this is the data an agent needs to
+    make a profile COMPLETE before running it, instead of discovering
+    the gap from a report footer afterwards.
+    """
+    from .runner import candidate_tools
+
+    candidates = candidate_tools(registry, repo, config)
+    plan: dict = {}
+    for name in _PROFILE_ORDER:
+        spec = PROFILES.get(name)
+        applicable = 0
+        missing: list[dict] = []
+        for cls in candidates:
+            if is_skipped(cls, spec):
+                continue
+            inst = cls(config=config)
+            if not _applicable_guard(inst, repo):
+                continue
+            applicable += 1
+            if not inst.is_installed():
+                missing.append({
+                    "name": inst.name,
+                    "install_hint": inst.install_hint(),
+                    "executor": "agent" if inst.can_auto_install() else "human",
+                })
+        plan[name] = {
+            "applicable": applicable,
+            "ready": applicable - len(missing),
+            "missing": missing,
+        }
+    return plan
+
+
+def _applicable_guard(inst: Tool, repo: Path) -> bool:
+    """``is_applicable`` with an exception guard — a broken adapter
+    must not crash doctor (same policy as the CLI's missing-tool check)."""
+    try:
+        return inst.is_applicable(repo)
+    except Exception:  # noqa: BLE001 — readiness checks should not crash
+        return True
+
+
+def readiness(registry, repo: Path | None = None, config=None) -> dict:
+    """The full readiness payload for ``doctor --json`` and the MCP server.
+
+    When ``repo`` is given, each tool gains an ``applicable`` flag and
+    the payload gains a ``profile_plan`` — the per-profile verdict on
+    which applicable tools are ready and which are missing."""
     tools: list[dict] = []
     installed = 0
+    candidate_names: set[str] | None = None
+    if repo is not None:
+        from .runner import candidate_tools
+
+        candidate_names = {
+            cls.name for cls in candidate_tools(registry, repo, config)
+        }
     for cls in sorted(registry.all(), key=lambda c: c.name):
         inst = cls()
         is_installed = inst.is_installed()
         installed += is_installed
-        tools.append({
+        entry = {
             "name": inst.name,
             "installed": is_installed,
             "version": inst.version() if is_installed else None,
             "install_hint": None if is_installed else inst.install_hint(),
             "auto_installable": inst.can_auto_install(),
             "profiles": tool_profiles(cls),
-        })
+        }
+        if candidate_names is not None:
+            entry["applicable"] = inst.name in candidate_names
+        tools.append(entry)
 
     docker = docker_status()
     system_dependencies = [] if docker["status"] == "installed" else [docker]
 
-    return {
+    payload = {
         "tools": tools,
         "system_dependencies": system_dependencies,
         "profile_guidance": profile_guidance(),
@@ -152,6 +221,9 @@ def readiness(registry) -> dict:
             ),
         },
     }
+    if repo is not None:
+        payload["profile_plan"] = profile_plan(registry, repo, config)
+    return payload
 
 
 

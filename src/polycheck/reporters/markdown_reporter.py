@@ -29,21 +29,82 @@ def render(
     results: list[ToolResult],
     *,
     report_dir: Path,
+    coverage: dict | None = None,
 ) -> list[Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     out = report_dir / "polycheck-report.md"
 
     lines: list[str] = []
     lines.extend(_header(repo, findings, results))
+    if coverage is not None and not coverage.get("complete", True):
+        lines.extend(_incomplete_banner(coverage))
     lines.extend(_severity_section(findings))
     lines.extend(_category_section(findings))
     lines.extend(_track_section(findings))
+    if coverage is not None:
+        lines.extend(_coverage_section(coverage))
     lines.extend(_tool_execution_section(results))
     lines.extend(_metrics_section(results))
     lines.extend(_findings_sections(findings))
 
     out.write_text("\n".join(lines), encoding="utf-8")
     return [out]
+
+
+def _incomplete_banner(coverage: dict) -> list[str]:
+    """The headline a reader cannot miss: this profile did not run in
+    full. 0.3.14 — a deep report without an installed heavy tool used
+    to present itself as complete."""
+    profile = str(coverage.get("profile", "default")).upper()
+    ran = coverage.get("ran", 0)
+    candidates = coverage.get("candidates", 0)
+    rows = coverage.get("tools", [])
+    missing = [t["name"] for t in rows if t.get("status") == "missing"]
+    failed = [t["name"] for t in rows if t.get("status") == "failed"]
+    not_applicable = sum(1 for t in rows if t.get("status") == "not-applicable")
+    parts = [
+        f"⚠ **{profile} SCAN INCOMPLETE** — {ran} of {candidates} "
+        "candidate tools ran"
+    ]
+    if not_applicable:
+        parts.append(f"; {not_applicable} not applicable to this repo")
+    parts.append(". ")
+    if missing:
+        parts.append(f"Missing (not installed): {', '.join(missing)}.")
+    if failed:
+        parts.append(f"Failed: {', '.join(failed)}.")
+    parts.append("This report must NOT be treated as a complete scan of its profile.")
+    return [f"> {' '.join(parts)}", ""]
+
+
+def _coverage_section(coverage: dict) -> list[str]:
+    """The per-tool truth about what ran and what did not. Ran tools
+    are already listed under Tool execution; this section lists the
+    rest with the reason and, for missing tools, the install command
+    and who should run it."""
+    verdict = ("complete" if coverage.get("complete", False)
+               else "**INCOMPLETE**")
+    lines = [
+        "## Coverage",
+        "",
+        f"Profile `{coverage.get('profile', 'default')}`: {verdict} — "
+        f"{coverage.get('ran', 0)} of {coverage.get('candidates', 0)} "
+        "candidate tools produced a result.",
+        "",
+        "| Tool | Status | Note |",
+        "|------|--------|------|",
+    ]
+    for row in coverage.get("tools", []):
+        if row.get("status") == "ran":
+            continue
+        note = str(row.get("reason", "")).replace("|", "\\|")
+        if row.get("status") == "missing" and row.get("install_hint"):
+            executor = row.get("executor", "human")
+            hint = str(row["install_hint"]).replace("|", "\\|")
+            note = f"{note} — install ({executor}): `{hint}`"
+        lines.append(f"| `{row['name']}` | {row.get('status', '?')} | {note} |")
+    lines.append("")
+    return lines
 
 
 def _header(repo: Path, findings: list, results: list) -> list[str]:

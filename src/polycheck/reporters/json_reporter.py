@@ -17,6 +17,7 @@ def render(
     results: list[ToolResult],
     *,
     report_dir: Path,
+    coverage: dict | None = None,
 ) -> list[Path]:
     """Write ``polycheck-report.json`` to ``report_dir``.
 
@@ -61,6 +62,12 @@ def render(
     metrics_sources = {r.tool: r.metrics for r in results if r.metrics}
     if metrics_sources:
         payload["metrics"] = metrics_sources
+
+    # Coverage (0.3.14) — per-tool truth about what ran, failed, was
+    # skipped, or was missing. Omitted when the caller did not supply
+    # one, keeping the schema stable for existing consumers.
+    if coverage is not None:
+        payload["coverage"] = coverage
 
     out.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return [out]

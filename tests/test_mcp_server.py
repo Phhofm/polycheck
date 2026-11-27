@@ -8,6 +8,29 @@ from polycheck.finding import Category, Finding, Severity
 from polycheck.runner import ToolResult
 
 
+class _RunnerStub:
+    """Adapter for test doubles: implements the Runner interface
+    mcp_server uses (run_with_coverage) on top of a minimal run() —
+    keeps the fakes in sync with the real Runner API (0.3.14)."""
+
+    def run(self, parallel=False, tools=None, profile=None):
+        raise NotImplementedError("subclasses provide run()")
+
+    def run_with_coverage(self, parallel=False, tools=None, profile=None):
+        findings, results = self.run(parallel=parallel, tools=tools, profile=profile)
+        coverage = {
+            "profile": profile.name if profile else "default",
+            "complete": True,
+            "applicable": len(results),
+            "ran": len(results),
+            "tools": [
+                {"name": r.tool, "status": "ran"} for r in results
+            ],
+        }
+        return findings, results, coverage
+
+
+
 def test_handle_polycheck_writes_reports_and_session(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
@@ -23,7 +46,7 @@ def test_handle_polycheck_writes_reports_and_session(tmp_path: Path, monkeypatch
     )
     result = ToolResult(tool="ruff", status="ok", findings=[finding], duration_sec=0.1)
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -57,7 +80,7 @@ def test_handle_polycheck_writes_reports_and_session(tmp_path: Path, monkeypatch
 def test_handle_polycheck_partial_scan_needs_user_input(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -103,7 +126,7 @@ def test_handle_polycheck_partial_scan_needs_user_input(tmp_path: Path, monkeypa
 def test_handle_polycheck_returns_completed_when_no_findings_and_full_coverage(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -138,7 +161,7 @@ def test_handle_polycheck_rejects_escaping_report_dir(tmp_path: Path, monkeypatc
         "output:\n  report_dir: ../outside\n", encoding="utf-8"
     )
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -179,7 +202,7 @@ def test_audit_run_returns_dependency_context_and_json_resource(tmp_path: Path, 
     )
     result = ToolResult(tool="ruff", status="ok", findings=[finding], duration_sec=0.1)
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -297,7 +320,7 @@ def test_handle_polycheck_emits_progress_phases(tmp_path: Path, monkeypatch):
     )
     result = ToolResult(tool="stub", status="ok", findings=[finding], duration_sec=0.1)
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -411,7 +434,7 @@ def test_diff_param_reports_only_new_findings(tmp_path: Path, monkeypatch):
     )
     result = ToolResult(tool="stub", status="ok", findings=[finding, new_finding], duration_sec=0.1)
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -456,7 +479,7 @@ def test_diff_param_without_baseline_reports_all_with_note(tmp_path: Path, monke
     )
     result = ToolResult(tool="stub", status="ok", findings=[finding], duration_sec=0.1)
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -580,7 +603,7 @@ def test_handle_polycheck_pr_profile_scopes_to_changed_files(
     f_changed, r_changed = _mk("stub", "CHANGED", "b.py")
     f_untouched, r_untouched = _mk("stub", "UNTOUCHED", "a.py")
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config
@@ -639,7 +662,7 @@ def test_setup_resource_is_listed_and_readable():
 def test_polycheck_run_response_carries_profile_guidance(tmp_path: Path, monkeypatch):
     from polycheck import mcp_server
 
-    class _FakeRunner:
+    class _FakeRunner(_RunnerStub):
         def __init__(self, repo, config):
             self.repo = repo
             self.config = config

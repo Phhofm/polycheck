@@ -10,7 +10,9 @@ from pathlib import Path
 
 from polycheck.config import Config
 from polycheck.finding import Category, Finding, Severity
-from polycheck.runner import dedupe, filter_by_severity, group_by_category
+from polycheck.profiles import resolve_profile
+from polycheck.registry import ToolRegistry
+from polycheck.runner import Runner, candidate_tools, dedupe, filter_by_severity, group_by_category
 from polycheck.tools.base import Tool
 
 
@@ -361,3 +363,100 @@ def test_exit_code_counts_untracked():
     f.track = "untracked"
 
     assert _exit_code([f], "HIGH") == 1
+
+
+# --- coverage (0.3.14) ---------------------------------------------------------
+
+
+class _RanTool(_StubTool):
+    pass
+
+
+class _MissingInstallable(_StubTool):
+    name = "missing-installable"
+    installer = "pipx:missing-stub"
+
+    def is_installed(self):
+        return False
+
+
+class _HeavyMissing(_MissingInstallable):
+    name = "pip-audit"
+
+
+class _ExplodingTool(_StubTool):
+    name = "exploding"
+
+    def run(self, repo):
+        raise RuntimeError("boom")
+
+
+def _coverage_registry() -> ToolRegistry:
+    reg = ToolRegistry()
+    for cls in (_RanTool, _MissingInstallable, _HeavyMissing, _ExplodingTool):
+        reg.register(cls)
+    return reg
+
+
+def _python_repo(tmp_path: Path) -> Path:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    return tmp_path
+
+
+def test_candidate_tools_language_and_filters(tmp_path):
+    reg = _coverage_registry()
+    cfg = Config()
+    cfg.disable = ["exploding"]
+
+    candidates = candidate_tools(reg, _python_repo(tmp_path), cfg)
+
+    assert [c.name for c in candidates] == ["stub", "missing-installable", "pip-audit"]
+
+
+def test_run_with_coverage_flags_missing_and_failed(tmp_path):
+    runner = Runner(repo=_python_repo(tmp_path), config=Config(),
+                    registry=_coverage_registry())
+    _findings, _results, cov = runner.run_with_coverage()
+
+    assert cov["profile"] == "default"
+    assert cov["complete"] is False
+    assert cov["candidates"] == 4
+    by_name = {t["name"]: t for t in cov["tools"]}
+    assert by_name["stub"]["status"] == "ran"
+    assert by_name["exploding"]["status"] == "failed"
+    missing = by_name["missing-installable"]
+    assert missing["status"] == "missing"
+    assert missing["executor"] == "agent"
+    assert "pipx" in missing["install_hint"]
+
+
+def test_coverage_pr_skips_heavy_without_failing(tmp_path):
+    runner = Runner(repo=_python_repo(tmp_path), config=Config(),
+                    registry=_coverage_registry())
+    _findings, _results, cov = runner.run_with_coverage(
+        profile=resolve_profile("pr"))
+
+    by_name = {t["name"]: t for t in cov["tools"]}
+    assert by_name["pip-audit"]["status"] == "skipped:profile"
+    assert cov["complete"] is False  # exploding + missing still drag it down
+
+
+def test_coverage_complete_when_everything_ran(tmp_path):
+    reg = ToolRegistry()
+    reg.register(_RanTool)
+    runner = Runner(repo=_python_repo(tmp_path), config=Config(), registry=reg)
+    _findings, _results, cov = runner.run_with_coverage()
+
+    assert cov["complete"] is True
+    assert cov["ran"] == cov["candidates"] == 1
+    assert not [t for t in cov["tools"] if t["status"] != "ran"]
+
+
+def test_run_still_returns_two_tuple(tmp_path):
+    runner = Runner(repo=_python_repo(tmp_path), config=Config(),
+                    registry=_coverage_registry())
+    findings, results = runner.run()
+
+    assert isinstance(findings, list)
+    assert isinstance(results, list)

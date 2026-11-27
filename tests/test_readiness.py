@@ -205,3 +205,110 @@ def test_doctor_json_embeds_skill_block(monkeypatch):
     assert skill["resource"] == "polycheck://setup"
     assert skill["url"].endswith("polycheck-skill.md")
     assert "SKILL.md" in skill["install_hint"]
+
+
+# --- profile_plan (0.3.14) -----------------------------------------------------
+
+
+class _MissingInstallable(_FastTool):
+    name = "missing-installable"
+    installer = "pipx:missing-stub"
+
+    def is_installed(self):
+        return False
+
+
+class _MissingHuman(_FastTool):
+    name = "missing-human"
+
+    def is_installed(self):
+        return False
+
+
+class _HeavyMissing(_MissingHuman):
+    name = "pip-audit"  # a HEAVY_TOOLS name
+
+
+def _plan_registry() -> ToolRegistry:
+    reg = ToolRegistry()
+    for cls in (_FastTool, _MissingInstallable, _MissingHuman, _HeavyMissing):
+        reg.register(cls)
+    return reg
+
+
+def test_profile_plan_lists_missing_applicable_tools(tmp_path):
+    from polycheck import readiness
+
+    payload = readiness.readiness(_plan_registry(), repo=tmp_path)
+    deep = payload["profile_plan"]["deep"]
+
+    assert deep["applicable"] == 4
+    assert deep["ready"] == 1
+    by_name = {m["name"]: m for m in deep["missing"]}
+    assert set(by_name) == {"missing-installable", "missing-human", "pip-audit"}
+    assert by_name["missing-installable"]["executor"] == "agent"
+    assert by_name["missing-human"]["executor"] == "human"
+    assert by_name["missing-installable"]["install_hint"]
+
+
+def test_profile_plan_pr_excludes_heavy_missing(tmp_path):
+    from polycheck import readiness
+
+    payload = readiness.readiness(_plan_registry(), repo=tmp_path)
+    pr = payload["profile_plan"]["pr"]
+
+    assert pr["applicable"] == 3  # heavy tool is outside the pr selection
+    assert {m["name"] for m in pr["missing"]} == {
+        "missing-installable", "missing-human",
+    }
+
+
+def test_profile_plan_respects_is_applicable(tmp_path):
+    from polycheck import readiness
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+
+    class _Refuses(_FastTool):
+        name = "refuses"
+        languages = ["python"]
+
+        def is_applicable(self, repo):
+            return False
+
+    class _Accepts(_FastTool):
+        name = "accepts"
+        languages = ["python"]
+
+    reg = ToolRegistry()
+    reg.register(_Refuses)
+    reg.register(_Accepts)
+    payload = readiness.readiness(reg, repo=tmp_path)
+    deep = payload["profile_plan"]["deep"]
+
+    assert deep["applicable"] == 1  # only the tool that accepts the repo
+    assert not deep["missing"]
+
+
+def test_readiness_tools_gain_applicable_only_with_repo(tmp_path):
+    from polycheck import readiness
+
+    with_repo = readiness.readiness(_registry(), repo=tmp_path)
+    without_repo = readiness.readiness(_registry())
+
+    assert all("applicable" in t for t in with_repo["tools"])
+    assert all("applicable" not in t for t in without_repo["tools"])
+
+
+def test_doctor_json_accepts_repo_path(tmp_path, monkeypatch):
+    from polycheck.cli import app
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    monkeypatch.setattr("polycheck.cli.default_registry", _plan_registry())
+
+    result = CliRunner().invoke(app, ["doctor", "--json", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    deep = payload["profile_plan"]["deep"]
+    assert deep["applicable"] == 4
+    assert deep["ready"] == 1

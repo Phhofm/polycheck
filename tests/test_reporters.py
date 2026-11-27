@@ -126,3 +126,66 @@ def test_unknown_format_is_noop(tmp_path: Path):
     written = render("pdf", tmp_path, _findings(), _results(),
                      report_dir=tmp_path / "out")
     assert written == []
+
+
+# --- coverage (0.3.14) ---------------------------------------------------------
+
+
+def _coverage(complete: bool) -> dict:
+    return {
+        "profile": "deep",
+        "complete": complete,
+        "candidates": 2,
+        "ran": 1,
+        "tools": [
+            {"name": "ruff", "status": "ran"},
+            {
+                "name": "sonarless",
+                "status": "missing",
+                "reason": "not installed",
+                "executor": "human",
+                "install_hint": "curl -sSL https://example.com/install.sh | bash",
+            },
+        ],
+    }
+
+
+def test_markdown_incomplete_coverage_banner(tmp_path: Path):
+    written = render("markdown", tmp_path, _findings(), _results(),
+                     report_dir=tmp_path / "out", coverage=_coverage(False))
+    text = written[0].read_text(encoding="utf-8")
+
+    assert "DEEP SCAN INCOMPLETE" in text
+    assert "sonarless" in text
+    assert "install (human)" in text
+    assert "example.com/install.sh" in text
+    assert "## Coverage" in text
+
+
+def test_markdown_complete_coverage_has_no_banner(tmp_path: Path):
+    written = render("markdown", tmp_path, _findings(), _results(),
+                     report_dir=tmp_path / "out", coverage=_coverage(True))
+    text = written[0].read_text(encoding="utf-8")
+
+    assert "INCOMPLETE" not in text
+    assert "## Coverage" in text
+    assert "complete" in text
+
+
+def test_json_reporter_embeds_coverage(tmp_path: Path):
+    written = render("json", tmp_path, _findings(), _results(),
+                     report_dir=tmp_path / "out", coverage=_coverage(False))
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+
+    assert payload["coverage"]["complete"] is False
+    assert payload["coverage"]["profile"] == "deep"
+
+
+def test_reporters_unchanged_without_coverage(tmp_path: Path):
+    md = render("markdown", tmp_path, _findings(), _results(),
+                report_dir=tmp_path / "md")
+    payload = json.loads(render("json", tmp_path, _findings(), _results(),
+                                report_dir=tmp_path / "js")[0].read_text(encoding="utf-8"))
+
+    assert "Coverage" not in md[0].read_text(encoding="utf-8")
+    assert "coverage" not in payload

@@ -156,8 +156,9 @@ def run(
         _auto_install_missing(only=tool or None, repo=repo)
 
     runner = Runner(repo=repo, config=cfg, registry=default_registry)
-    findings, results = runner.run(parallel=parallel, tools=tool or None,
-                                   profile=profile_spec)
+    findings, results, coverage = runner.run_with_coverage(
+        parallel=parallel, tools=tool or None, profile=profile_spec
+    )
 
     if not no_dedupe:
         findings = dedupe(findings)
@@ -170,12 +171,15 @@ def run(
     if diff:
         findings = _apply_diff_baseline(cfg, repo, findings)
 
-    written = _write_reports(cfg, repo, findings, results)
+    written = _write_reports(cfg, repo, findings, results, coverage=coverage)
     _print_summary(results, findings, written)
 
     failed = [r for r in results if r.status in ("error", "timeout")]
     if failed:
         _print_failures(failed)
+
+    if not coverage["complete"]:
+        _print_incomplete(coverage)
 
     not_run = _missing_tools(repo, only=tool or None, exclude={r.tool for r in results})
     not_run = [cls for cls in not_run if not is_skipped(cls, profile_spec)]
@@ -294,16 +298,46 @@ def _print_detected_languages(repo: Path) -> None:
 
 
 def _write_reports(
-    cfg: Config, repo: Path, findings: list, results: list
+    cfg: Config, repo: Path, findings: list, results: list,
+    coverage: dict | None = None,
 ) -> list[Path]:
     """Write reports in all configured formats."""
     out_dir = repo / cfg.output.report_dir
     written: list[Path] = []
     for fmt in cfg.output.formats:
         written.extend(
-            render_report(fmt, repo, findings, results, report_dir=out_dir)
+            render_report(fmt, repo, findings, results, report_dir=out_dir,
+                          coverage=coverage)
         )
     return written
+
+
+def _print_incomplete(coverage: dict) -> None:
+    """Console warning for a profile that did not run completely.
+
+    Mirrors the report banner: an agent reading stdout must hit the
+    same truth the report carries (0.3.14)."""
+    profile = coverage.get("profile", "default")
+    ran = coverage.get("ran", 0)
+    candidates = coverage.get("candidates", 0)
+    rows = coverage.get("tools", [])
+    missing = [t["name"] for t in rows if t.get("status") == "missing"]
+    failed = [t["name"] for t in rows if t.get("status") == "failed"]
+    not_applicable = sum(1 for t in rows if t.get("status") == "not-applicable")
+    scope = (f" ({not_applicable} not applicable to this repo)"
+             if not_applicable else "")
+    console.print(
+        f"[bold yellow]⚠ {profile.upper()} SCAN INCOMPLETE[/bold yellow] — "
+        f"{ran} of {candidates} candidate tools ran{scope}."
+    )
+    if missing:
+        console.print(f"  [yellow]Missing (not installed):[/yellow] {', '.join(missing)}")
+    if failed:
+        console.print(f"  [yellow]Failed:[/yellow] {', '.join(failed)}")
+    console.print(
+        "[yellow]Install the missing analyzers (see the report's Coverage "
+        "section) and re-run for a complete scan.[/yellow]"
+    )
 
 
 def _print_summary(results: list, findings: list, written: list[Path]) -> None:
@@ -666,6 +700,10 @@ def show_prompt(
 
 @app.command(name="doctor")
 def doctor(
+    path: Path = typer.Argument(
+        Path("."), exists=True, file_okay=False, dir_okay=True, resolve_path=True,
+        help="Repository to assess applicability against (default: current directory)",
+    ),
     fail_on_missing: bool = typer.Option(
         False,
         "--fail-on-missing",
@@ -675,21 +713,29 @@ def doctor(
         False,
         "--json",
         help="Print a machine-readable readiness payload instead of the "
-        "table — tools with profile participation, system prerequisites "
-        "(Docker for sonarless), profile guidance, and the install "
-        "policy. Designed for LLM coding assistants.",
+        "table — tools with profile participation and repo applicability, "
+        "a per-profile plan (applicable/ready/missing with executor "
+        "tags), system prerequisites (Docker for sonarless), profile "
+        "guidance, and the install policy. Designed for LLM coding "
+        "assistants.",
     ),
 ) -> None:
     """Check which bundled analyzers are installed and which are missing.
 
     For each missing tool, prints the install command. For each
     installed tool, prints its version. This is the recommended first
-    step on a fresh machine.
+    step on a fresh machine. With a repo path (default ``.``), the JSON
+    payload also plans per profile which applicable tools are ready and
+    which are missing.
     """
     if as_json:
         from .readiness import readiness
 
-        payload = readiness(default_registry)
+        try:
+            cfg = Config.load(path)
+        except Exception:  # noqa: BLE001 — a broken config must not crash doctor
+            cfg = None
+        payload = readiness(default_registry, repo=path, config=cfg)
         console.print_json(json.dumps(payload))
         if payload["summary"]["missing"] and fail_on_missing:
             raise typer.Exit(code=1)

@@ -499,7 +499,7 @@ def _handle_audit_run(arguments: dict) -> list:
 
     dependency = _dependency_check(repo, cfg, tools=arguments.get("tools"))
     runner = Runner(repo=repo, config=cfg)
-    findings, results = runner.run(
+    findings, results, coverage = runner.run_with_coverage(
         parallel=bool(arguments.get("parallel", True)),
         tools=arguments.get("tools"),
         profile=profile_spec,
@@ -516,7 +516,8 @@ def _handle_audit_run(arguments: dict) -> list:
         return report_dir
     written: list[Path] = []
     for fmt in cfg.output.formats:
-        written.extend(render_report(fmt, repo, findings, results, report_dir=report_dir))
+        written.extend(render_report(fmt, repo, findings, results,
+                                     report_dir=report_dir, coverage=coverage))
 
     _LAST_RUN["report_dir"] = str(report_dir)
     _LAST_RUN["findings"] = [f.to_dict() for f in findings]
@@ -607,7 +608,7 @@ def _handle_polycheck(arguments: dict, progress: Callable[[float, str | None], N
         progress(0.3, "scan started")
     cfg.severity_threshold = severity
     runner = Runner(repo=repo, config=cfg)
-    findings, results = runner.run(
+    findings, results, coverage = runner.run_with_coverage(
         parallel=bool(arguments.get("parallel", True)),
         tools=arguments.get("tools"),
         profile=profile_spec,
@@ -634,7 +635,8 @@ def _handle_polycheck(arguments: dict, progress: Callable[[float, str | None], N
     written: list[Path] = []
 
     for fmt in cfg.output.formats:
-        written.extend(render_report(fmt, repo, findings, results, report_dir=out_dir))
+        written.extend(render_report(fmt, repo, findings, results,
+                                     report_dir=out_dir, coverage=coverage))
     if progress:
         progress(0.9, "reports written")
 

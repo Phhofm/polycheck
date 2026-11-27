@@ -25,9 +25,11 @@ def render(
     results: list[ToolResult],
     *,
     report_dir: Path,
+    coverage: dict | None = None,
 ) -> list[Path]:
     """Dispatch to the right renderer. Unknown format → empty list."""
     fn = REPORTERS.get(fmt)
     if fn is None:
         return []
-    return fn(repo, findings, results, report_dir=report_dir)
+    return fn(repo, findings, results, report_dir=report_dir,
+              coverage=coverage)
