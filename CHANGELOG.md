@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.16 (2026-11-27)
+
+Fixed — `polycheck.doctor` declares the MCP `readOnlyHint` tool
+annotation, so clients can treat it as side-effect-free on the wire
+without reading the description; the workflow tools honestly carry no
+read-only hint (they write reports and may install). Spec-convention
+hygiene on the current SDK — no framework needed.
+
 ## 0.3.15 (2026-11-27)
 
 Added — MCP readiness parity and structured install failures:
