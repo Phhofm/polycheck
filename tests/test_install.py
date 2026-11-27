@@ -140,3 +140,72 @@ def test_install_github_returns_url_not_shell_command():
     ok, msg = t.install()
     assert ok is False
     assert "github.com/owner/repo" in msg
+
+
+# --- structured failure remediation (0.3.15) ------------------------------------
+
+
+def test_npm_eacces_failure_carries_remediation(monkeypatch):
+    """npm-global installs on system-node layouts die with a bare EACCES
+    (live test 2026-11-27: depcheck/tsc); the message must name the fix
+    instead of making every agent rediscover npm prefix semantics."""
+    import subprocess
+
+    from polycheck.finding import Category as _Category
+    from polycheck.tools import base as base_module
+
+    class _NpmTool(Tool):
+        name = "depcheck"
+        category = _Category.DEPS
+        languages = ["javascript"]
+        installer = "npm:depcheck"
+
+        def is_applicable(self, repo):
+            return True
+
+        def run(self, repo):
+            return []
+
+    monkeypatch.setattr(
+        base_module.shutil, "which",
+        lambda name: "/usr/bin/npm" if name == "npm" else None,
+    )
+
+    def fake_run(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, 1, stdout="", stderr="npm ERR! code EACCES\nnpm ERR! permission denied"
+        )
+
+    monkeypatch.setattr(base_module.subprocess, "run", fake_run)
+
+    tool = _NpmTool()
+    monkeypatch.setattr(tool, "is_installed", lambda: False)
+    ok, message = tool.install()
+
+    assert ok is False
+    assert "EACCES" in message
+    assert "npm config set prefix" in message
+    assert "sudo" in message
+
+
+def test_non_eacces_failure_stays_raw(monkeypatch):
+    import subprocess
+
+    from polycheck.tools import base as base_module
+
+    monkeypatch.setattr(
+        base_module.shutil, "which",
+        lambda name: "/usr/bin/pipx" if name == "pipx" else None,
+    )
+
+    def fake_run(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="no match found")
+
+    monkeypatch.setattr(base_module.subprocess, "run", fake_run)
+
+    tool = _FakeTool()
+    monkeypatch.setattr(tool, "is_installed", lambda: False)
+    ok, message = tool.install()
+
+    assert ok is False
+    assert "npm config set prefix" not in message

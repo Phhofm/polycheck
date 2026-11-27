@@ -340,7 +340,8 @@ class Tool(abc.ABC):
                 argv, capture_output=True, text=True, timeout=300
             )
             if out.returncode != 0:
-                return False, f"`{cmd}` failed: {(out.stderr or out.stdout).strip()[:200]}"
+                detail = (out.stderr or out.stdout).strip()[:200]
+                return False, _install_failure_hint(cmd, detail)
         except subprocess.TimeoutExpired:
             return False, f"`{cmd}` timed out after 300s"
         except OSError as e:
@@ -403,6 +404,24 @@ _INSTALLERS = {
     "brew":  "brew install {pkg}",
     "apt":   "sudo apt install {pkg}",
 }
+
+
+def _install_failure_hint(cmd: str, detail: str) -> str:
+    """Turn a raw package-manager failure into actionable remediation.
+
+    The known case (live test 2026-11-27): npm-global installs on
+    system-node layouts die with a bare EACCES — every agent then
+    rediscovers npm prefix semantics by trial. Name the fix instead.
+    """
+    if "EACCES" in detail and cmd.startswith("npm "):
+        return (
+            f"`{cmd}` failed: {detail} — npm lacks write permission for "
+            "its global prefix (system-managed node). Fix without sudo: "
+            "`mkdir -p ~/.npm-global && npm config set prefix "
+            "~/.npm-global`, add ~/.npm-global/bin to PATH, then retry; "
+            "or run the install with sudo."
+        )
+    return f"`{cmd}` failed: {detail}"
 
 
 def build_install_command(installer: str | None, name: str) -> str | None:
