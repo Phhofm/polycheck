@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.15 (2026-11-27)
+
+Added — MCP readiness parity and structured install failures:
+
+  * **`polycheck.doctor` MCP tool** (read-only): the module docstring
+    promised a doctor tool the surface never shipped; an MCP-first
+    agent had to shell out to the CLI for the 0.3.14 readiness payload
+    and per-profile plan. Now the surface is two workflow tools plus
+    one read-only readiness tool — installs stay behind the guided
+    flow's consent gate, so doctor can never change the machine.
+  * **Structured install failures**: a bare `EACCES` from npm-global
+    installs (system-node layouts) now carries the concrete fix —
+    user-prefix config or sudo — instead of raw npm stderr for every
+    agent to rediscover.
+
 ## 0.3.14 (2026-11-27)
 
 Added — scan coverage and per-profile setup plans: a report can no

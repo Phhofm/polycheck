@@ -58,11 +58,20 @@ Also read before starting: the *Experiments* log (live-test history and
 the two external live tests that produced meta-findings #1–#5, all fixed
 or logged), the *Decisions* section, and the *Backlog* section.
 
-## Current state (verified 2026-11-27, 0.3.14 work block)
+## Current state (verified 2026-11-27, 0.3.15 work block)
 
-0.3.14 (unreleased, in working tree): **run coverage + doctor profile
-plan** — motivated by the heart-nerve_trainner onboarding live test,
-where a deep run without an installed sonarless exited 0 and the
+0.3.15 (same evening as 0.3.14): **MCP readiness parity** — the MCP
+surface now carries the read-only `polycheck.doctor` tool (readiness +
+profile plan for a repo arg) that its own docstring had promised but
+never shipped; surface is two workflow tools + one read-only tool,
+installs stay behind the guided flow's consent gate. Plus structured
+install failures (npm EACCES → concrete prefix/sudo remediation).
+Follows the same live test session as 0.3.14: the user asked for
+overnight agentic hardening of the polycheck MCP server.
+
+0.3.14 (unreleased → released same day): **run coverage + doctor
+profile plan** — motivated by the heart-nerve_trainner onboarding live
+test, where a deep run without an installed sonarless exited 0 and the
 report footer was the only hint that SonarQube never ran. The runner
 now computes a per-candidate coverage record (ran / failed /
 not-applicable / skipped:profile / missing with install hint and
