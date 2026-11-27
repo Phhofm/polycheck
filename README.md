@@ -843,3 +843,7 @@ Built with [MCP](https://modelcontextprotocol.io),
 ## License
 
 MIT.
+
+## One-command setup
+
+Want polycheck **and** the vibecode skill wired into your coding agent in one go? See [vibecode-harness](https://github.com/Phhofm/vibecode-harness).
