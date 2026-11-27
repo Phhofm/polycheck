@@ -344,7 +344,7 @@ def _build_tool_definitions():
     pick the right one reliably, while doctor gives MCP-first agents
     the 0.3.14 setup plan without shelling out.
     """
-    from mcp.types import Tool
+    from mcp.types import Tool, ToolAnnotations
 
     return [
         _workflow_tool("polycheck.run"),
@@ -401,6 +401,9 @@ def _build_tool_definitions():
                 },
                 "required": [],
             },
+            # Spec annotation: clients can render/blank-list this tool as
+            # side-effect-free without reading the description.
+            annotations=ToolAnnotations(readOnlyHint=True),
         ),
     ]
 

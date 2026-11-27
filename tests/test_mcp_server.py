@@ -794,3 +794,18 @@ def test_doctor_tool_is_registered_and_dispatched(tmp_path: Path, monkeypatch):
     )
     payload = json.loads(response[0].text)
     assert payload["profile_plan"]["deep"]["missing"][0]["name"] == "stub-missing"
+
+
+def test_doctor_tool_declares_read_only_annotation():
+    """Spec-convention gap (FastMCP question, 2026-11-27): MCP tool
+    annotations tell clients how a tool behaves — the read-only doctor
+    tool should say so on the wire, on the current SDK, no framework."""
+    from polycheck import mcp_server
+
+    tools = {t.name: t for t in mcp_server._build_tool_definitions()}
+
+    assert tools["polycheck.doctor"].annotations is not None
+    assert tools["polycheck.doctor"].annotations.readOnlyHint is True
+    # the workflow tools change the repo (reports, installs) — no hint
+    assert tools["polycheck.run"].annotations is None
+    assert tools["polycheck.audit_run"].annotations is None
