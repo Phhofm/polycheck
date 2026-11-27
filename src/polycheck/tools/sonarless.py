@@ -9,6 +9,7 @@ Requires Docker to be installed. Skips silently if Docker is absent.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -61,16 +62,39 @@ class SonarlessTool(Tool):
     universal = True
     installer = "github:gitricko/sonarless"
 
+    @property
+    def binary(self) -> str:
+        """The sonarless CLI: PATH first, then the installer's
+        well-known target ``~/.sonarless/sonarless``.
+
+        The install script does not promise a PATH entry (live test
+        2026-11-27: an installed sonarless was reported missing for
+        months because only ``shutil.which`` was probed — Docker was
+        healthy the whole time, the CLI was simply unreachable by
+        name)."""
+        on_path = shutil.which(self.name)
+        if on_path:
+            return on_path
+        home_launcher = Path.home() / ".sonarless" / self.name
+        if home_launcher.is_file() and os.access(home_launcher, os.X_OK):
+            return str(home_launcher)
+        return self.name
+
+    def is_installed(self) -> bool:
+        """PATH lookup plus the installer's well-known target — the
+        base class only probes ``which(self.binary)``, which the global
+        ``shutil.which`` makes redundant here."""
+        if shutil.which(self.name):
+            return True
+        home_launcher = Path.home() / ".sonarless" / self.name
+        return home_launcher.is_file() and os.access(home_launcher, os.X_OK)
+
     def is_applicable(self, repo: Path) -> bool:
         # Always applicable — SonarQube covers every language.
         # But skip if Docker is not available.
         if not _docker_available():
             return False
         return True
-
-    def is_installed(self) -> bool:
-        """Check if sonarless CLI is available."""
-        return shutil.which("sonarless") is not None
 
     def install_hint(self) -> str:
         return f"curl -sSL {SONARLESS_INSTALL_URL} | bash"
@@ -118,7 +142,7 @@ class SonarlessTool(Tool):
             created_props = True
         try:
             result = subprocess.run(
-                ["sonarless", "scan"],
+                [self.binary, "scan"],
                 cwd=repo,
                 capture_output=True,
                 text=True,
