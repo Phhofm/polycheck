@@ -58,7 +58,22 @@ Also read before starting: the *Experiments* log (live-test history and
 the two external live tests that produced meta-findings #1–#5, all fixed
 or logged), the *Decisions* section, and the *Backlog* section.
 
-## Current state (verified 2026-11-25, 0.3.4 work block)
+## Current state (verified 2026-11-27, 0.3.14 work block)
+
+0.3.14 (unreleased, in working tree): **run coverage + doctor profile
+plan** — motivated by the heart-nerve_trainner onboarding live test,
+where a deep run without an installed sonarless exited 0 and the
+report footer was the only hint that SonarQube never ran. The runner
+now computes a per-candidate coverage record (ran / failed /
+not-applicable / skipped:profile / missing with install hint and
+executor tag); incomplete profiles get a report banner, a Coverage
+section, a JSON `coverage` object, and a console warning.
+`doctor --json [PATH]` gains `profile_plan` (applicable/ready/missing
+per profile) plus per-tool `applicable` flags; runner, CLI
+missing-tool check, and readiness now share one `candidate_tools`
+function. MCP `polycheck.run`/`audit_run` reports carry the coverage.
+The external live test also validated the 0.3.6 readiness loop itself
+(doctor → install → run → baseline drove the whole onboarding).
 
 Environment: Python 3.12, tooling installed to `~/.local` (pipx-style).
 `polycheck` on PATH = local source install (`pipx install --force
@@ -69,8 +84,26 @@ pipx-installed.
 | Gate | Command | Result |
 | --- | --- | --- |
 | Lint | `ruff check src tests` | clean (exit 0) |
-| Types | `mypy .` (whole repo incl. tests) | clean — pragmatic config |
-| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 257 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+| Types | `mypy .` (whole repo incl. tests; project env) | clean — 0.3.14 code needed 4 fixes (reporter signature unification, Optional profile access, stub `run` decl) |
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 271 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+
+| Tests | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q` | 274 passed, 0 failed, 1 skipped (LUCID_PATH env) |
+
+Follow-up in the same block (live test, 2026-11-27): **sonarless was
+installed all along** at `~/.sonarless` (June install) but that dir is
+on no PATH — the adapter's `shutil.which`-only probe reported it
+missing for months while Docker sat healthy. The adapter now resolves
+the CLI from PATH or `~/.sonarless/sonarless` and invokes the absolute
+path; the heart-nerve_trainner deep re-run then executed the full
+SonarQube pass (sonarless ok, ~500 s, 414 findings that every earlier
+scan had silently lacked). Note: `pipx install --force <local repo>`
+leaves a gitignored `build/` dir in the source tree that breaks
+`mypy .` with a duplicate-module error until removed.
+
+Live verification (scratch fixture + polycheck repo itself): deep run
+on a fixture emits the banner and lists sonarless as missing/human;
+self `--profile pr` scan flags its own missing actionlint and still
+passes the HIGH gate (exit 0) after the mypy fixes.
 
 Latest release: **0.3.9** on PyPI (JSON API verified + fresh pipx E2E);
 v0.3.0–v0.3.6 all released via Trusted Publishing. CI note: GitHub runner

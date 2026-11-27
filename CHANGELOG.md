@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.14 (2026-11-27)
+
+Added — scan coverage and per-profile setup plans: a report can no
+longer present an incomplete profile as complete, and an agent can ask
+what to install *before* burning a scan (found by the
+heart-nerve_trainner live test, where a deep run silently omitted
+SonarQube because sonarless was not installed — the report footer was
+the only hint):
+
+  * **Run coverage**: `polycheck run` now records, per applicable tool,
+    whether it ran, failed, was not applicable, was skipped by the
+    profile, or is missing — surfaced as a `⚠ … SCAN INCOMPLETE`
+    banner + `## Coverage` section in the markdown report, a
+    `coverage` object in the JSON report, and a console warning.
+    A missing or failed tool makes the profile INCOMPLETE;
+    `not-applicable` and profile skips never do.
+  * **`doctor --json` profile plan**: `polycheck doctor --json [PATH]`
+    now detects the repo's languages and reports, per profile,
+    `applicable` / `ready` / `missing` — each missing entry carries
+    the install command and an `executor` tag (`agent` for
+    package-manager installs polycheck can run after user approval,
+    `human` for apt / remote-script installs policy reserves for the
+    user). The MCP `polycheck.run` reports carry the same coverage.
+  * **Shared eligibility**: the runner, the CLI missing-tool check, and
+    the readiness plan now derive from one `candidate_tools` function,
+    so doctor and run can never disagree about what would apply to a
+    repo.
+  * **PATH-independent sonarless detection**: the sonarless installer
+    targets `~/.sonarless` without promising a PATH entry — an
+    installed sonarless was reported as missing for months because the
+    adapter only probed `shutil.which` (live test 2026-11-27: Docker
+    was healthy the whole time, the CLI was simply unreachable by
+    name). The adapter now resolves the CLI from PATH *or*
+    `~/.sonarless/sonarless` and invokes the absolute path, so a
+    PATH-less install scans instead of silently vanishing from the
+    deep profile.
+
 ## 0.3.13 (2026-11-25)
 
 Fixed — sonarless could report a FAILED SonarQube scan as **no-findings**
