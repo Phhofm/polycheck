@@ -33,7 +33,7 @@ deterministic, measurable checks run on every iteration can catch it.
 
 polycheck applies the paper's findings — plus everything else
 deterministic analysis catches — as a polyglot static-analysis pipeline
-with LLM-ready output. It runs 21 bundled analyzers (linters,
+with LLM-ready output. It runs 22 bundled analyzers (linters,
 type-checkers, CVE scanners, secret scanners, SonarQube) and hands the
 LLM a tight, located, reproducible findings list to adjudicate:
 
@@ -449,6 +449,7 @@ disable:
 | Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
 | GitHub Actions     | actionlint      | Workflow file linter                    |
 | Shell              | shellcheck      | Shell script linter                     |
+| GitHub Actions     | zizmor          | CI/CD security semantics: template injection, credential persistence, excessive permissions (actionlint checks syntax; zizmor checks security) |
 | Tests              | coverage        | Runs your pytest suite, reports untested modules and per-file coverage gaps (deep profile; needs `coverage` + `pytest` in the environment you run polycheck from) |
 | Docker             | hadolint        | Dockerfile linter                       |
 

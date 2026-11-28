@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.3.17 (2026-11-28)
+## 0.3.18 (2026-11-28)
+
+Added — **`zizmor` adapter** (new): CI/CD security analysis for GitHub
+Actions — template injection, credential persistence, excessive
+permissions, impostor commits. Where actionlint checks workflow
+syntax, zizmor checks the security semantics; the seeded verify repo
+now carries both an actionlint defect (unparseable `runz:` key) and a
+zizmor defect (unpinned action ref) in separate files, and both
+expectations verify live. pipx-installable, so the doctor executor tag
+is `agent`.
+
+Fixed — Windows CI: the Linux-only ghrelease tests skip on non-Linux
+platforms; the README analyzer-count test reads UTF-8 explicitly
+(cp1252 decode crash on Windows).
+
+Also — knip seeded expectation added (left-pad unused dependency,
+verified live); hadolint/actionlint verified-release installs
+exercised against the real network (sha256 verified, `2.15.1` /
+`1.7.12`).
+
+## 0.3.17 (2026-11-28) (2026-11-28)
 
 Added — the test-coverage signal and checksum-verified installs:
 

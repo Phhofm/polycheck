@@ -26,6 +26,8 @@ _EXPECTED_FINDINGS: dict[str, int] = {
     "vulture": 1,     # unused_helper
     "deptry": 1,      # requests declared but never imported
     "eslint": 1,      # unused variable in app.js
+    "knip": 1,        # left-pad dependency is never imported
+    "zizmor": 1,      # unpinned action ref -> template-injection/unpinned-uses family
     "tsc": 1,         # bad.ts type error
     "gitleaks": 1,    # AWS key in secret.txt
     "shellcheck": 1,  # unquoted $HOME in script.sh
@@ -211,6 +213,21 @@ dependencies = ["requests==2.0.0"]
     tests_dir.mkdir(exist_ok=True)
     (tests_dir / "test_nothing.py").write_text(
         "def test_nothing():\n    assert 1 + 1 == 2\n", encoding="utf-8"
+    )
+    # zizmor seed: a VALID workflow with an unpinned action ref — zizmor
+    # flags it; it must not reuse ci.yml, which the actionlint seed
+    # deliberately makes unparseable (zizmor fatal-fails on bad yaml).
+    wf_dir = repo / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "deploy.yml").write_text(
+        "name: deploy\n"
+        "on: push\n"
+        "jobs:\n"
+        "  build:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n",
+        encoding="utf-8",
     )
     # scb-check seeds: two slop patterns + one duplicated block.
     (repo / "slop.py").write_text(
