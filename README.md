@@ -33,7 +33,7 @@ deterministic, measurable checks run on every iteration can catch it.
 
 polycheck applies the paper's findings — plus everything else
 deterministic analysis catches — as a polyglot static-analysis pipeline
-with LLM-ready output. It runs 19 bundled analyzers (linters,
+with LLM-ready output. It runs 20 bundled analyzers (linters,
 type-checkers, CVE scanners, secret scanners, SonarQube) and hands the
 LLM a tight, located, reproducible findings list to adjudicate:
 
@@ -41,7 +41,7 @@ LLM a tight, located, reproducible findings list to adjudicate:
   instead of guessing
 - the paper's erosion model is measured directly: duplicated AST
   blocks, slop patterns, complexity-mass concentration ([details](#anti-ai-slop-metrics-built-in-zero-install))
-- works as an **MCP server** (two slim tools) with `/polycheck`
+- works as an **MCP server** (three slim tools: run, audit_run, and the read-only doctor) with `/polycheck`
   workflows for Kilo Code, OpenCode, Claude Code, and any MCP client
 - **self-auditing**: a seeded-defect verifier guards every adapter — a
   tool that runs clean on a repo seeded with defects it must catch
@@ -627,7 +627,8 @@ offers to install sonarless before rerunning `polycheck.run`.
 
 polycheck follows the [Code Mode](https://blog.cloudflare.com/code-mode/)
 guidance (Cloudflare, Anthropic *programmatic tool calling*, OpenCode 2.0
-default): tool definitions stay tiny (two tools, not ten), tool responses
+default): tool definitions stay tiny (two state-changing tools plus one
+read-only doctor, not ten), tool responses
 are compact summaries, and the heavy data lives in report **files** the
 agent reads selectively — only the final result ever needs to reach the
 model. For orchestration and ad-hoc composition, the CLI is the scripting

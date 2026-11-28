@@ -105,3 +105,21 @@ def test_agent_templates_carry_quality_questions_section():
         assert "never" in body and "findings" in body, (
             f"{name}: quality questions must not become fabricated findings"
         )
+
+
+def test_readme_analyzer_count_matches_registry():
+    """README drift guard: the intro's analyzer count must equal the
+    registry's discovered tool count (drift found 2026-11-28: README
+    said 19 while the matrix listed 20 after ts-slop landed)."""
+    import re
+
+    from polycheck.registry import default_registry
+
+    readme = (Path(__file__).parent.parent / "README.md").read_text()
+    match = re.search(r"runs (\d+) bundled analyzers", readme)
+    assert match, "README no longer states a bundled-analyzer count"
+    default_registry.discover()
+    assert int(match.group(1)) == len(default_registry.all()), (
+        "README analyzer count is stale - update the intro to match the "
+        "tool matrix and the registry"
+    )
