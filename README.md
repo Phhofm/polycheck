@@ -33,7 +33,7 @@ deterministic, measurable checks run on every iteration can catch it.
 
 polycheck applies the paper's findings — plus everything else
 deterministic analysis catches — as a polyglot static-analysis pipeline
-with LLM-ready output. It runs 20 bundled analyzers (linters,
+with LLM-ready output. It runs 21 bundled analyzers (linters,
 type-checkers, CVE scanners, secret scanners, SonarQube) and hands the
 LLM a tight, located, reproducible findings list to adjudicate:
 
@@ -74,6 +74,10 @@ review — and measure the slop your agents leave behind.**
 
 Install once, initialize your assistant integration, then run
 `/polycheck` in any repository.
+
+**Tested on:** Ubuntu Budgie (Linux) with the Kilo Code VS Code
+extension, driven by GLM models. Designed to be portable (Linux/macOS
+first; Windows via WSL or Git Bash), but that is the tested home base.
 
 ### Step 1: Install polycheck
 
@@ -445,6 +449,7 @@ disable:
 | Universal          | **sonarless**   | **SonarQube: bugs, vulns, code smells (30+ languages, requires Docker)** |
 | GitHub Actions     | actionlint      | Workflow file linter                    |
 | Shell              | shellcheck      | Shell script linter                     |
+| Tests              | coverage        | Runs your pytest suite, reports untested modules and per-file coverage gaps (deep profile; needs `coverage` + `pytest` in the environment you run polycheck from) |
 | Docker             | hadolint        | Dockerfile linter                       |
 
 Install hints are exposed via `polycheck explain <tool>`.

@@ -815,3 +815,17 @@ concern.
     all day — CI runs queued for hours (macOS starvation overnight, then
     the whole matrix). Local gates + the Release workflow + PyPI serve as
     the verification chain; CI catches up when capacity returns.~~
+
+Adapter research (2026-11-28, user-requested sweep for "deep profile
+should analyze a lot"): **zizmor** is the confirmed next D1 candidate —
+static analysis for CI/CD security (GitHub Actions template injection,
+credential persistence, excessive permissions, impostor commits),
+pip-installable (`pipx install zizmor`, agent-executable), JSON output,
+MIT, actively maintained (zizmorcore/zizmor). actionlint only checks
+syntax; zizmor checks the security semantics — no duplication. Seeded
+expectation plan: a fixture workflow with an unpinned action ref
+(template-injection) must yield >= 1 finding. After zizmor:
+mutation testing (mutmut — test QUALITY, very slow, deep-only) is the
+only remaining non-duplicating category worth considering; pylint,
+bandit, radon, osv-scanner stay rejected (they duplicate ruff/mypy,
+semgrep, sonarless/scb-check, pip-audit/npm-audit).
