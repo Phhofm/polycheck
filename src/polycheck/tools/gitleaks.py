@@ -88,6 +88,41 @@ class GitleaksTool(Tool):
     universal = True
     installer = "github-release:gitleaks/gitleaks"
 
+    def can_auto_install(self) -> bool:
+        # gitleaks releases ship gitleaks_<v>_checksums.txt, so the
+        # verified-or-refused download path applies on Linux.
+        return self._asset_slug() is not None
+
+    def _asset_slug(self) -> tuple[str, str] | None:
+        import platform
+
+        if platform.system() != "Linux":
+            return None
+        machine = platform.machine().lower()
+        arch = {"x86_64": "x64", "aarch64": "arm64"}.get(machine)
+        return ("linux", arch) if arch else None
+
+    def install(self) -> tuple[bool, str]:
+        if self.is_installed():
+            return True, "gitleaks is already installed"
+        slug = self._asset_slug()
+        if slug is None:
+            return False, (
+                "no verified GitHub-release install for this platform - "
+                "install manually: brew install gitleaks (macOS) or fetch "
+                "a binary from https://github.com/gitleaks/gitleaks/releases"
+            )
+        os_slug, arch = slug
+        from .ghrelease import install_github_release
+
+        return install_github_release(
+            "gitleaks/gitleaks",
+            "gitleaks_{version}_{os}_{arch}.tar.gz",
+            "gitleaks_{version}_checksums.txt",
+            "gitleaks",
+            Path.home() / ".local" / "bin",
+        )
+
     def is_applicable(self, repo: Path) -> bool:
         return (repo / ".git").exists() or (repo / ".git").is_dir()
 

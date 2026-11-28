@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "polycheck"
-version = "0.3.18"
+version = "0.3.19"
 description = "Polyglot static analysis pipeline that produces LLM-ready triage output"
 readme = "README.md"
 license = {text = "MIT"}

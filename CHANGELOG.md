@@ -1,5 +1,10 @@
 # Changelog
 
+Added — **gitleaks joins the verified-release family**: releases ship
+`gitleaks_<v>_checksums.txt`, so the universal secrets scanner is now
+agent-installable on Linux (sha256 verified, refuses unverified),
+instead of a manual human step.
+
 ## 0.3.18 (2026-11-28)
 
 Added — **`zizmor` adapter** (new): CI/CD security analysis for GitHub
