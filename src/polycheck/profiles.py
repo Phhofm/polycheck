@@ -20,6 +20,11 @@ from pathlib import Path
 from .finding import Finding
 from .verify import HEAVY_TOOLS
 
+# Adapters that only make sense in the deep profile. The first one is
+# ``coverage``: it runs the project's own test suite, which is far too
+# slow for the default scan and pointless in the fast pr gate.
+DEEP_ONLY_TOOLS = frozenset({"coverage"})
+
 
 @dataclass(frozen=True)
 class ProfileSpec:
@@ -107,8 +112,14 @@ def is_skipped(cls, profile: ProfileSpec | None) -> bool:
     ``pr`` keeps the fast tools only: no Docker/network-heavy tools
     (sonarless, semgrep, pip-audit, npm-audit) and no structural
     adapters. ``deep`` and the default keep everything that is
-    installed and applicable.
+    installed and applicable — except deep-only adapters (``coverage``
+    runs the project's test suite: too slow for every default scan,
+    pointless in the fast pr gate), which participate in ``deep`` only.
     """
+    if cls.name in DEEP_ONLY_TOOLS and (
+        profile is None or profile.name != "deep"
+    ):
+        return True
     if profile is None:
         return False
     if profile.skip_heavy and cls.name in HEAVY_TOOLS:

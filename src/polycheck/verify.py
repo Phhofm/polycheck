@@ -21,6 +21,7 @@ HEAVY_TOOLS = {"sonarless", "semgrep", "pip-audit", "npm-audit"}
 # the permissive behavior until their seed is verified.
 _EXPECTED_FINDINGS: dict[str, int] = {
     "ruff": 1,        # unused import in app.py
+    "coverage": 1,    # seeded test never imports app.py -> untested module
     "mypy": 1,        # incompatible annotation in app.py
     "vulture": 1,     # unused_helper
     "deptry": 1,      # requests declared but never imported
@@ -203,6 +204,13 @@ dependencies = ["requests==2.0.0"]
     (repo / "app.py").write_text(
         "import os\n\nx: int = 'bad'\n\ndef unused_helper() -> None:\n    pass\n",
         encoding="utf-8",
+    )
+    # coverage seed: a test suite that never imports app.py, so the
+    # adapter must report the untested module.
+    tests_dir = repo / "tests"
+    tests_dir.mkdir(exist_ok=True)
+    (tests_dir / "test_nothing.py").write_text(
+        "def test_nothing():\n    assert 1 + 1 == 2\n", encoding="utf-8"
     )
     # scb-check seeds: two slop patterns + one duplicated block.
     (repo / "slop.py").write_text(

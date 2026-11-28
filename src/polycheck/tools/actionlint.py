@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..finding import Category, Finding, Severity
 from .base import Tool
+from .ghrelease import install_github_release
 
 # actionlint output:
 #   .github/workflows/ci.yml:10:5: unexpected key "runs" in workflow ... [syntax_check]
@@ -32,6 +33,39 @@ class ActionlintTool(Tool):
     def is_applicable(self, repo: Path) -> bool:
         wf = repo / ".github" / "workflows"
         return wf.exists() and any(wf.glob("*.yml")) or any(wf.glob("*.yaml"))
+
+    def can_auto_install(self) -> bool:
+        # Every actionlint release ships actionlint_<v>_checksums.txt, so
+        # the verified-or-refused download path applies on Linux.
+        return self._asset_slug() is not None
+
+    def _asset_slug(self) -> tuple[str, str] | None:
+        import platform
+
+        if platform.system() != "Linux":
+            return None
+        machine = platform.machine().lower()
+        arch = {"x86_64": "amd64", "aarch64": "arm64"}.get(machine)
+        return ("linux", arch) if arch else None
+
+    def install(self) -> tuple[bool, str]:
+        if self.is_installed():
+            return True, "actionlint is already installed"
+        slug = self._asset_slug()
+        if slug is None:
+            return False, (
+                "no verified GitHub-release install for this platform - "
+                "install manually: brew install actionlint (macOS) or fetch "
+                "a binary from https://github.com/rhysd/actionlint/releases"
+            )
+        os_slug, arch = slug
+        return install_github_release(
+            "rhysd/actionlint",
+            "actionlint_{version}_{os}_{arch}.tar.gz",
+            "actionlint_{version}_checksums.txt",
+            "actionlint",
+            Path.home() / ".local" / "bin",
+        )
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("actionlint") is None:

@@ -1,6 +1,32 @@
 # Changelog
 
-## 0.3.16 (2026-11-27)
+## 0.3.17 (2026-11-28)
+
+Added — the test-coverage signal and checksum-verified installs:
+
+  * **`coverage` adapter (deep-only, new `test-coverage` category)**:
+    runs the project's own pytest suite under `coverage`, then reports
+    untested modules (MEDIUM) and partially covered files (LOW), with a
+    `coverage_percent` scan metric. Deep-only by design — it executes
+    the user's test suite, which is too slow for the default scan and
+    pointless in the pr gate (`DEEP_ONLY_TOOLS` in profiles). Tolerant
+    of failing tests: test failures are pytest's business, coverage is
+    measured regardless. Needs `coverage` + `pytest` in the environment
+    polycheck runs from.
+  * **Checksum-verified GitHub-release installs** (hadolint, actionlint):
+    the `can_auto_install` docstring removed unverified release
+    downloads on purpose — this is the checksum-gated way back in.
+    `tools/ghrelease.py` downloads the release asset, verifies SHA-256
+    against the release's published checksum file, and refuses when no
+    checksum exists (shellcheck v0.11.0 publishes none, so it stays
+    manual with an enriched hint naming apt/dnf/brew). Linux-only v1;
+    refusals say so. On Linux these two tools are now
+    agent-installable (doctor executor tag: `agent`).
+  * **zizmor queued** as the next D1 adapter (CI/CD security —
+    template injection, credential persistence, excessive permissions),
+    with the seeded-expectation plan in DEVELOPMENT.md.
+
+## 0.3.16 (2026-11-27) (2026-11-27)
 
 Fixed — `polycheck.doctor` declares the MCP `readOnlyHint` tool
 annotation, so clients can treat it as side-effect-free on the wire

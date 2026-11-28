@@ -31,10 +31,14 @@ def tool_profiles(cls: type[Tool]) -> list[str]:
 
     The default scan and the deep profile run everything installed and
     applicable. The pr profile is the fast gate: no Docker/network-heavy
-    tools, no structural adapters.
+    tools, no structural adapters. Deep-only adapters (coverage) list
+    ``deep`` only.
     """
+    from .profiles import DEEP_ONLY_TOOLS
     from .verify import HEAVY_TOOLS
 
+    if cls.name in DEEP_ONLY_TOOLS:
+        return ["deep"]
     heavy_or_structural = (
         cls.name in HEAVY_TOOLS or getattr(cls, "structural", False)
     )

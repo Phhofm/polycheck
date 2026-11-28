@@ -280,7 +280,11 @@ class Tool(abc.ABC):
         if self.installer and self.installer.startswith("github-release:"):
             repo_path = self.installer.removeprefix("github-release:")
             return (
-                f"install {self.name} via your package manager or from "
+                f"install {self.name} via your package manager "
+                "(Debian/Ubuntu: sudo apt install "
+                f"{self.name}; Fedora: sudo dnf install {self.name}; "
+                "macOS: brew install "
+                f"{self.name}) or grab a binary from "
                 f"https://github.com/{repo_path}/releases"
             )
         if self.installer and self.installer.startswith("github:"):

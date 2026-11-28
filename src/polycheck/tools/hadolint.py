@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..finding import Category, Finding, Severity
 from .base import Tool, iter_source_files
+from .ghrelease import install_github_release
 
 _HADOLINT_LINE = re.compile(
     r"^(?P<file>[^:]+):(?P<line>\d+)\s*"
@@ -29,6 +30,39 @@ class HadolintTool(Tool):
 
     def is_applicable(self, repo: Path) -> bool:
         return any(repo.glob("**/Dockerfile*")) or (repo / "Dockerfile").exists()
+
+    def can_auto_install(self) -> bool:
+        # Checksums.sha256 ships with every hadolint release, so the
+        # verified-or-refused download path applies on Linux.
+        return self._asset_slug() is not None
+
+    def _asset_slug(self) -> tuple[str, str] | None:
+        import platform
+
+        if platform.system() != "Linux":
+            return None
+        machine = platform.machine().lower()
+        arch = {"x86_64": "x86_64", "aarch64": "arm64"}.get(machine)
+        return ("linux", arch) if arch else None
+
+    def install(self) -> tuple[bool, str]:
+        if self.is_installed():
+            return True, "hadolint is already installed"
+        slug = self._asset_slug()
+        if slug is None:
+            return False, (
+                "no verified GitHub-release install for this platform - "
+                "install manually: brew install hadolint (macOS) or fetch "
+                "a binary from https://github.com/hadolint/hadolint/releases"
+            )
+        os_slug, arch = slug
+        return install_github_release(
+            "hadolint/hadolint",
+            f"hadolint-{os_slug}-{arch}",
+            "checksums.sha256",
+            "hadolint",
+            Path.home() / ".local" / "bin",
+        )
 
     def run(self, repo: Path) -> list[Finding]:
         if shutil.which("hadolint") is None:

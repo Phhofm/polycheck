@@ -61,6 +61,7 @@ class Category(enum.Enum):
     CVE = "cve"
     DEPS = "deps"
     FORMAT = "format"
+    TEST_COVERAGE = "test-coverage"
     OTHER = "other"
 
 
