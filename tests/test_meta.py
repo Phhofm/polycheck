@@ -115,7 +115,9 @@ def test_readme_analyzer_count_matches_registry():
 
     from polycheck.registry import default_registry
 
-    readme = (Path(__file__).parent.parent / "README.md").read_text()
+    readme = (Path(__file__).parent.parent / "README.md").read_text(
+        encoding="utf-8"
+    )
     match = re.search(r"runs (\d+) bundled analyzers", readme)
     assert match, "README no longer states a bundled-analyzer count"
     default_registry.discover()

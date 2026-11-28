@@ -64,6 +64,7 @@ def _tar_gz(binary_name: str, content: bytes) -> bytes:
     return buf.getvalue()
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="verified installs are Linux-only in v1")
 def test_verified_install_extracts_and_places_binary(
     tmp_path: Path, monkeypatch
 ):
@@ -105,6 +106,7 @@ def test_verified_install_extracts_and_places_binary(
     assert "sha256 verified" in message
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="verified installs are Linux-only in v1")
 def test_checksum_mismatch_is_refused(tmp_path: Path, monkeypatch):
     asset = _tar_gz("actionlint", b"evil-bytes")
     payload = {
@@ -140,6 +142,7 @@ def test_checksum_mismatch_is_refused(tmp_path: Path, monkeypatch):
     assert not (tmp_path / "bin" / "actionlint").exists()
 
 
+@pytest.mark.skipif(platform.system() != "Linux", reason="verified installs are Linux-only in v1")
 def test_missing_checksum_file_is_refused(tmp_path: Path, monkeypatch):
     payload = {
         "release": _fake_release({"tool-linux-amd64": b""}),
