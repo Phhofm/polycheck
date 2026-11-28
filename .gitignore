@@ -14,3 +14,4 @@ polycheck-reports/
 
 # sonarless output
 sonar-metrics.json
+uv.lock
